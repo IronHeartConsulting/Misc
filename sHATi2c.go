@@ -10,6 +10,7 @@ package main
 
 import (
 	"flag"
+	"time"
 
 	i2c "github.com/d2r2/go-i2c"
 	logger "github.com/d2r2/go-logger"
@@ -23,6 +24,11 @@ const i2cCmdSetLEDs		= 7
 const i2cCmdSetVib		= 8
 const i2cCmdReadEEPROM	= 5
 const i2cCmdWriteEEPROM = 6
+const i2cCmdResetDef	= 12
+
+const LED_RED			= 0x04
+const LED_GRN			= 0x02
+const LED_BLU			= 0x01
 
 var lg = logger.NewPackageLogger("main",
 	logger.DebugLevel,
@@ -133,6 +139,88 @@ func writePwr(i2cHandle *i2c.I2C ) {
 	lg.Infof("wrote count:%d bytes",ioCount)
 }
 
+//  turn off all LEDs
+//
+func LEDsOff(i2cHandle *i2c.I2C ) {
+	var i2cBuf []byte
+	var ioCount int
+	var err error
+
+	i2cBuf = make ([]byte, 8)
+	lg.Info("---turn off all LEDs---")
+
+	i2cBuf = i2cBuf[:2]
+	i2cBuf[0] = i2cCmdSetLEDs
+	i2cBuf[1] = 0
+	// send command to secureHAT 
+	ioCount, err = i2cHandle.WriteBytes(i2cBuf)
+	if err != nil {
+		lg.Fatal(err)
+	}
+	lg.Infof("wrote count:%d bytes",ioCount)
+}
+
+//  turn ON all LEDs
+//   delay, in seconds, turning them on
+//	if zero, use one write to turn them all on
+//
+func LEDsAllOn(i2cHandle *i2c.I2C, delay int ) {
+	var i2cBuf []byte
+	var ioCount int
+	var err error
+
+	i2cBuf = make ([]byte, 8)
+	lg.Info("---turn on all LEDs---")
+
+	i2cBuf = i2cBuf[:2]
+	i2cBuf[0] = i2cCmdSetLEDs
+	if delay == 0 {
+		i2cBuf[1] = 0x07
+		// send command to secureHAT 
+		ioCount, err = i2cHandle.WriteBytes(i2cBuf)
+		if err != nil {
+			lg.Fatal(err)
+		}
+		lg.Infof("wrote count:%d bytes",ioCount)
+	} else {  // cycle thru, then Blue->green -> Red pausing 'delay' seocnds between each
+		i2cBuf[1] = 0x00    // ALL LEDs off
+		leds := []byte {LED_RED, LED_GRN, LED_BLU}
+		for  _, led := range leds{
+			i2cBuf[1] |= byte(led)
+			lg.Infof("new LED value:%x led set:%x",i2cBuf[1],byte(led))
+			// send command to secureHAT 
+			ioCount, err = i2cHandle.WriteBytes(i2cBuf)
+			if err != nil {
+				lg.Fatal(err)
+			}
+			lg.Infof("wrote count:%d bytes",ioCount)
+		time.Sleep(time.Duration(delay) * time.Second)
+		}
+	}
+}
+
+//   reset all power variables to Defaults
+//
+func resetDefault(i2cHandle *i2c.I2C ) {
+	var i2cBuf []byte
+	var ioCount int
+	var err error
+
+	i2cBuf = make ([]byte, 8)
+	lg.Info("---reset variables to Defaults---")
+
+	i2cBuf = i2cBuf[:1]
+	i2cBuf[0] = i2cCmdResetDef
+	// send command to secureHAT 
+	ioCount, err = i2cHandle.WriteBytes(i2cBuf)
+	if err != nil {
+		lg.Fatal(err)
+	}
+	lg.Infof("wrote count:%d bytes",ioCount)
+}
+
+//    ***  main  ***
+//    
 func main() {
 
 
@@ -158,8 +246,13 @@ func main() {
 		logger.ChangePackageLogLevel("i2c", logger.InfoLevel)
 	}
 
+	LEDsAllOn(i2c,1)
+	time.Sleep(5 * time.Second)
 	readADC(i2c)
 	readPwr(i2c)
 	writePwr(i2c)
 	readPwr(i2c)
+	resetDefault(i2c)
+	readPwr(i2c)
+	LEDsOff(i2c)
 }
