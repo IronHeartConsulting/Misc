@@ -94,6 +94,7 @@ func initTCamp(devName *string) {
         return
     }
 
+	GHE_Index = -1
     for i, port := range ports {
         log.Printf("Found port: %s %d\n", port.Name, i)
         if port.IsUSB {
@@ -105,7 +106,7 @@ func initTCamp(devName *string) {
             GHE_Index = i
         }
     }
-	if GHE_Index == 0 {
+	if GHE_Index == -1 {
 		log.Fatal(" no matching port ")
 	}
 
@@ -117,7 +118,7 @@ func initTCamp(devName *string) {
     }
     port, err := serial.Open(ports[GHE_Index].Name, mode)
     if err != nil {
-        log.Fatal(err)
+		log.Fatal(err)
     }
 
 	TCamp_1.serialPort = port
@@ -158,7 +159,7 @@ func readLoop() {
             break
         }
         if n == 0 {
-        log.Println("\nEOF")
+			log.Println("\nEOF")
             break
         }
 		// find all substrings delimited by \r\n
