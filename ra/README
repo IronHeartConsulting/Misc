@@ -1,0 +1,33 @@
+Script for Rainforest Automation Eagle-200
+
+Use the shell script "racmd" to send XML commands to the unit - usage:
+
+./racmd <xml file>
+
+racmd has three variables - RAHOST for the device, RAUSER and RAPASS for
+credentials for access control.
+
+The following XML commands are in files:
+
+devlst.xml	Use this to get the hardware address of the meter which
+                is needed in the other scripts.
+
+You need to edit the following files to use the Hardware address of your
+meter from the script above.
+
+getdetails.xml	Use this to get all the information extracted from the 
+                meter.  This includes mutliplier/divisor information for
+                your meter as well as the information it maintains and you
+                can query.  Some of the fields return either null or zero as
+                PG&E doesn't seem to use them.
+
+getsum.xml	Gets the current demand and summation delivered from  the 
+                meter.
+
+
+rfepoch.php is old and I don't think required.  It converted UNIX time into
+the Epoch used by Rainforest - this was used for the old RainForest cloud
+queries via XML which as no longer required as you get the information
+directly from the Eagle-200 on the local network.
+
+

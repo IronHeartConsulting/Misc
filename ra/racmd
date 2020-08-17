@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# RAHOST is either the IP address or the eagle local name - ie: eagle-006dd8.local where the format is
+# eagle-{eagle Cloud id}.local
+
+RAHOST=192.168.21.127
+
+# RAUSER should be set to the Cloud ID of the device including any leading ZEROs
+RAUSER=006d60
+
+# RAPASS is the installation code from the Eagle label
+
+RAPASS=4b0190726b0bbe37
+
+wget -q -O- --post-file=$1 --user=$RAUSER --password=$RAPASS --header="Content-Type: text/xml;" http://$RAHOST/cgi-bin/post_manager

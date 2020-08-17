@@ -1,0 +1,20 @@
+
+<Command>
+    <Name>device_query</Name>
+    <DeviceDetails>
+        <HardwareAddress>0x0013500101283c3a </HardwareAddress> 
+    </DeviceDetails>
+    <Components>
+        <Component>
+            <Name>Main</Name>
+                <Variables>
+                    <Variable>
+                        <Name>zigbee:InstantaneousDemand</Name>
+                    </Variable>
+                    <Variable>
+                        <Name>zigbee:CurrentSummationDelivered</Name>
+                    </Variable>
+                </Variables>
+        </Component>
+    </Components>
+</Command>

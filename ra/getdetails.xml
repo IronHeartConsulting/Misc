@@ -1,0 +1,7 @@
+
+<Command>
+    <Name>device_details</Name>
+    <DeviceDetails>
+        <HardwareAddress>0x0013500101283c3a</HardwareAddress>
+    </DeviceDetails>
+</Command>
