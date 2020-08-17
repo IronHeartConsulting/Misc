@@ -8,7 +8,7 @@ import (
 	"encoding/xml"
 )
 
-func parseMeterXML( bodyText []byte ) {
+func parseMeterXML( bodyText []byte ) (string, string, string) {
 	type Result struct {
 		// XMLName	xml.Name	`xml:"DeviceDetails"`
 		XMLName	xml.Name	`xml:"Device"`
@@ -19,15 +19,16 @@ func parseMeterXML( bodyText []byte ) {
 	err := xml.Unmarshal(bodyText, &v)
 	if err != nil {
 		fmt.Printf("xml unmashall error: %v\n", err)
-		return
+		return "", "", ""
 	}
 	fmt.Printf("HW address %s\n",v.HWaddr)
 	fmt.Printf("Values: %v\n",v.VarValues)
-
+	return v.HWaddr, v.VarValues[0], v.VarValues[1]
 }
 
 func main() {
 	var err error
+	var HWaddr, instantDemand, sumDelivered string
     // or you can use []byte(`...`) and convert to Buffer later on
     body := `<Command>
     <Name>device_query</Name>
@@ -65,11 +66,13 @@ func main() {
     }
 	defer resp.Body.Close()
 	bodyText, err := ioutil.ReadAll(resp.Body)
-	parseMeterXML(bodyText)
-	s := string(bodyText)
+	HWaddr, instantDemand, sumDelivered = parseMeterXML(bodyText)
+	fmt.Printf("meter HW address:%s\n",HWaddr)
+	fmt.Printf("instant demand:%s  sum total delivered:%s\n",instantDemand,sumDelivered)
+	// s := string(bodyText)
 	// 's' is now a string version of an XML response
-	fmt.Println("XML formatted result:")
-	fmt.Println(s)
-	fmt.Println("---end---")
+	// fmt.Println("XML formatted result:")
+	// fmt.Println(s)
+	// fmt.Println("---end---")
 }
 
