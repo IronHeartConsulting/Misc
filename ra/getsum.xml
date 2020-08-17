@@ -2,7 +2,7 @@
 <Command>
     <Name>device_query</Name>
     <DeviceDetails>
-        <HardwareAddress>0x0013500101283c3a </HardwareAddress> 
+        <HardwareAddress>0x0013500200a196eb </HardwareAddress> 
     </DeviceDetails>
     <Components>
         <Component>
