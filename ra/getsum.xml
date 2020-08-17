@@ -14,6 +14,9 @@
                     <Variable>
                         <Name>zigbee:CurrentSummationDelivered</Name>
                     </Variable>
+                    <Variable>
+                        <Name>zigbee:CurrentSummationReceived</Name>
+                    </Variable>
                 </Variables>
         </Component>
     </Components>

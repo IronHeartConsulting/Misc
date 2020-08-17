@@ -8,7 +8,7 @@ import (
 	"encoding/xml"
 )
 
-func parseMeterXML( bodyText []byte ) (string, string, string) {
+func parseMeterXML( bodyText []byte ) (string, string, string, string) {
 	type Result struct {
 		// XMLName	xml.Name	`xml:"DeviceDetails"`
 		XMLName	xml.Name	`xml:"Device"`
@@ -19,16 +19,16 @@ func parseMeterXML( bodyText []byte ) (string, string, string) {
 	err := xml.Unmarshal(bodyText, &v)
 	if err != nil {
 		fmt.Printf("xml unmashall error: %v\n", err)
-		return "", "", ""
+		return "", "", "", ""
 	}
 	fmt.Printf("HW address %s\n",v.HWaddr)
 	fmt.Printf("Values: %v\n",v.VarValues)
-	return v.HWaddr, v.VarValues[0], v.VarValues[1]
+	return v.HWaddr, v.VarValues[0], v.VarValues[1], v.VarValues[2]
 }
 
 func main() {
 	var err error
-	var HWaddr, instantDemand, sumDelivered string
+	var HWaddr, instantDemand, sumDelivered, sumReceived string
     // or you can use []byte(`...`) and convert to Buffer later on
     body := `<Command>
     <Name>device_query</Name>
@@ -44,6 +44,9 @@ func main() {
                     </Variable>
                     <Variable>
                         <Name>zigbee:CurrentSummationDelivered</Name>
+                    </Variable>
+                    <Variable>
+                        <Name>zigbee:CurrentSummationReceived</Name>
                     </Variable>
                 </Variables>
         </Component>
@@ -66,9 +69,9 @@ func main() {
     }
 	defer resp.Body.Close()
 	bodyText, err := ioutil.ReadAll(resp.Body)
-	HWaddr, instantDemand, sumDelivered = parseMeterXML(bodyText)
+	HWaddr, instantDemand, sumDelivered, sumReceived = parseMeterXML(bodyText)
 	fmt.Printf("meter HW address:%s\n",HWaddr)
-	fmt.Printf("instant demand:%s  sum total delivered:%s\n",instantDemand,sumDelivered)
+	fmt.Printf("instant demand:%s  sum total delivered:%s received:%s\n",instantDemand,sumDelivered,sumReceived)
 	// s := string(bodyText)
 	// 's' is now a string version of an XML response
 	// fmt.Println("XML formatted result:")
