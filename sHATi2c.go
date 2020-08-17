@@ -229,9 +229,10 @@ func readEEP(i2cHandle *i2c.I2C ) {
 	i2cBuf = make ([]byte, 8)
 	lg.Info("---reading EEPROM---")
 
-	i2cBuf = i2cBuf[:1]
+	i2cBuf = i2cBuf[:2]
 	i2cBuf[0] = i2cCmdReadEEPROM
-	// send command to secureHAT to read back the ADC value
+	i2cBuf[1] = 0
+	// send command 
 	ioCount, err = i2cHandle.WriteBytes(i2cBuf)
 	// read power variables
 	i2cBuf = i2cBuf[:4]
@@ -256,7 +257,7 @@ func main() {
 	debugFlag := flag.Bool("debug", false, "control debugging output")
 	flag.Parse()
 
-	lg.Info("secureHAT Read ADC value  V0.3")
+	lg.Info("secureHAT Read ADC value  V0.4")
 
 	defer logger.FinalizeLogger()
 	// Create new connection to i2c-bus on 1 line with address 0x40.

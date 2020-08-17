@@ -14,8 +14,28 @@ name="room_temp"
 
 [[probe]]
 num=2
-name="display"
+name="probe_2"
 
 [[probe]]
-num=10
-name="toohigh"
+num=3
+name="probe_3"
+
+[[probe]]
+num=4
+name="probe_4"
+
+[[probe]]
+num=5
+name="probe_5"
+
+[[probe]]
+num=6
+name="probe_6"
+
+[[probe]]
+num=7
+name="probe_7"
+
+[[probe]]
+num=8
+name="probe_8"
