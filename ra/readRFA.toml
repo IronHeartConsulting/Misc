@@ -1,0 +1,9 @@
+title = "TOML format config for read RF device"
+
+test_name="testing"
+
+[database]
+server = "chester.local"
+DBName = "energy"
+username = "K6TD"
+password = "magic4052"

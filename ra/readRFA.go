@@ -2,13 +2,52 @@ package main
 
 import (
     "bytes"
-    "fmt"
+    "log"
+	"os"
+	"flag"
+	"time"
     "net/http"
 	"io/ioutil"
 	"encoding/xml"
+	"strconv"
+
+	"github.com/spf13/viper"
+	"github.com/influxdata/influxdb1-client/v2"
 )
 
-func parseMeterXML( bodyText []byte ) (string, string, string, string) {
+
+var ourVersion string = "V0.1"
+
+var dbgLvl = flag.Uint("debug",0,"debug level (0-3)")
+
+
+var influxHostName string
+var inflClient	client.Client
+var configTitle string
+var MyDB        string
+var username    string
+var password    string
+var testName    string
+var rfaReq		*http.Request
+var	rfaClient	*http.Client
+
+
+// config structures
+type DatabaseConfig struct {
+    Host string `mapstructure:"server"`
+    User string `mapstructure:"username"`
+    Pass string `mapstructure:"password"`
+    DBName string `mapstructure:"DBName"`
+}
+
+type Config struct {
+    Db DatabaseConfig `mapstructure:"database"`
+}
+
+var c Config
+
+func parseMeterXML( bodyText []byte ) (string, float32, float32, float32) {
+
 	type Result struct {
 		// XMLName	xml.Name	`xml:"DeviceDetails"`
 		XMLName	xml.Name	`xml:"Device"`
@@ -18,18 +57,80 @@ func parseMeterXML( bodyText []byte ) (string, string, string, string) {
 	v := Result{}
 	err := xml.Unmarshal(bodyText, &v)
 	if err != nil {
-		fmt.Printf("xml unmashall error: %v\n", err)
-		return "", "", "", ""
+		log.Printf("xml unmashall error: %v\n", err)
+		return "", 0.0,  0.0,  0.0
 	}
-	fmt.Printf("HW address %s\n",v.HWaddr)
-	fmt.Printf("Values: %v\n",v.VarValues)
-	return v.HWaddr, v.VarValues[0], v.VarValues[1], v.VarValues[2]
+	// log.Printf("HW address %s\n",v.HWaddr)
+	// log.Printf("Values: %v\n",v.VarValues)
+	var0, _  := strconv.ParseFloat(v.VarValues[0], 32)
+	var1, _  := strconv.ParseFloat(v.VarValues[1], 32)
+	var2, _  := strconv.ParseFloat(v.VarValues[2], 32)
+	return v.HWaddr, float32(var0), float32(var1),  float32(var2)
 }
 
-func main() {
-	var err error
-	var HWaddr, instantDemand, sumDelivered, sumReceived string
-    // or you can use []byte(`...`) and convert to Buffer later on
+// use influxDB to store readings
+func initDB() {
+    var err error
+
+    // Create a new influx HTTPClient
+    inflClient, err = client.NewHTTPClient(client.HTTPConfig{
+        Addr:     "http://"+c.Db.Host+":8086",
+        Username: c.Db.User,
+        Password: c.Db.Pass,
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+
+}
+
+// retrieve general config informoation
+func loadConfig() (err error){
+
+    viper.SetConfigName("readRFA")
+    viper.AddConfigPath(".")
+    err = viper.ReadInConfig()
+    if err != nil {
+        log.Printf("Config file error:%S",err)
+        return(err)
+    }
+    configTitle = viper.GetString("title")
+    log.Printf("%s",configTitle)
+    testName = viper.GetString("test_name")
+//  MyDB = viper.GetString("DBName")
+//  influxHostName = viper.GetString("server")
+//  username = viper.GetString("username")
+//  password = viper.GetString("password")
+
+    if err := viper.Unmarshal(&c); err != nil {
+        log.Printf("couldn't read config: %s", err)
+    }
+
+    return (nil)
+
+}
+
+func readLoop() {
+
+	var instantDemand float32
+	var sumDelivered, sumReceived float32
+	var HWAddr string
+
+	for {
+		bodyText := readUnit()
+		HWAddr, instantDemand, sumDelivered, sumReceived = parseMeterXML(bodyText)
+		err := insertReading(HWAddr, instantDemand, sumDelivered, sumReceived)
+		if err != nil {
+			log.Println("insertReaading returned err%s",err)
+		}
+		log.Printf("instant demand:%f  sum total delivered:%f received:%f Used:%f\n",
+					instantDemand,sumDelivered,sumReceived,sumDelivered-sumReceived)
+		time.Sleep(5 * time.Second)
+	}
+}
+
+func readUnit() []byte {
+
     body := `<Command>
     <Name>device_query</Name>
     <DeviceDetails>
@@ -53,25 +154,83 @@ func main() {
     </Components>
 </Command>`
 
-	// fmt.Println(body)
-    client := &http.Client{}
+    rfaClient := &http.Client{}
     // build a new request, but not doing the POST yet
-    req, err := http.NewRequest("POST", "http://192.168.21.127/cgi-bin/post_manager/", bytes.NewBuffer([]byte(body)))
+    rfaReq, err := http.NewRequest("POST", "http://192.168.21.127/cgi-bin/post_manager/", bytes.NewBuffer([]byte(body)))
     if err != nil {
-        fmt.Println(err)
+        log.Println(err)
     }
-    req.Header.Add("Content-Type", "text/xml; charset=utf-8")
-	req.SetBasicAuth("006d60","4b0190726b0bbe37")
+    rfaReq.Header.Add("Content-Type", "text/xml; charset=utf-8")
+	rfaReq.SetBasicAuth("006d60","4b0190726b0bbe37")
     // now POST it
-    resp, err := client.Do(req)
+    resp, err := rfaClient.Do(rfaReq)
     if err != nil {
-        fmt.Println(err)
+        log.Printf("readUnit: Do rtn err:%v\n",err)
     }
 	defer resp.Body.Close()
 	bodyText, err := ioutil.ReadAll(resp.Body)
+	return bodyText
+}
+
+func insertReading(HWAddr string, instantDemand float32, sumDelivered float32, sumReceived float32) (err error) {
+
+	var tags map[string]string
+	var fields map[string]interface{}
+
+	tags = map[string]string {
+		"meterAddr": HWAddr,
+	}
+
+	fields = map[string]interface{} {
+		"demand": instantDemand,
+		"delivered" : sumDelivered,
+		"received" : sumDelivered,
+	}
+
+	bp, err := client.NewBatchPoints(client.BatchPointsConfig{
+		Database: c.Db.DBName,
+		Precision: "s",
+	})
+	if err != nil {
+		log.Printf("New Batch Points err:%v",err)
+		return err
+	}
+
+    pt, err := client.NewPoint("meter_reading", tags, fields, time.Now())
+    if err != nil {
+        log.Fatal(err)
+    }
+    bp.AddPoint(pt)
+
+    // Write the batch
+    if err := inflClient.Write(bp); err != nil {
+        log.Fatal(err)
+    }
+
+	return nil
+
+}
+
+func main() {
+	var err error
+	var HWaddr string
+	var instantDemand, sumDelivered, sumReceived float32
+
+	flag.Parse()
+	log.SetFlags(0)
+	err = loadConfig()
+	if err != nil {
+		os.Exit(3)
+	}
+	initDB()
+	log.Printf("*** readFA: read rainforeest automation meter interface. Version%s ***",ourVersion)
+	bodyText := readUnit()
 	HWaddr, instantDemand, sumDelivered, sumReceived = parseMeterXML(bodyText)
-	fmt.Printf("meter HW address:%s\n",HWaddr)
-	fmt.Printf("instant demand:%s  sum total delivered:%s received:%s\n",instantDemand,sumDelivered,sumReceived)
+	log.Printf("meter HW address:%s\n",HWaddr)
+	log.Printf("instant demand:%f  sum total delivered:%f received:%f\n",instantDemand,sumDelivered,sumReceived)
+
+	readLoop()
+
 	// s := string(bodyText)
 	// 's' is now a string version of an XML response
 	// fmt.Println("XML formatted result:")
