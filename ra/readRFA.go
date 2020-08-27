@@ -16,7 +16,7 @@ import (
 )
 
 
-var ourVersion string = "V0.1"
+var ourVersion string = "V0.2"
 
 var dbgLvl = flag.Uint("debug",0,"debug level (0-3)")
 
@@ -115,13 +115,22 @@ func readLoop() {
 	var instantDemand float32
 	var sumDelivered, sumReceived float32
 	var HWAddr string
+	var bodyText []byte
+	var err error
 
 	for {
-		bodyText := readUnit()
+		bodyText, err = readUnit()
+		if err != nil {
+			log.Printf("readUnit returned err:%v\n",err)
+			return
+		}
 		HWAddr, instantDemand, sumDelivered, sumReceived = parseMeterXML(bodyText)
-		err := insertReading(HWAddr, instantDemand, sumDelivered, sumReceived)
+		err = nil
+		err = insertReading(HWAddr, instantDemand, sumDelivered, sumReceived)
 		if err != nil {
 			log.Println("insertReaading returned err%s",err)
+			// log.Println(HWAddr)
+			return
 		}
 		log.Printf("instant demand:%f  sum total delivered:%f received:%f Used:%f\n",
 					instantDemand,sumDelivered,sumReceived,sumDelivered-sumReceived)
@@ -129,7 +138,7 @@ func readLoop() {
 	}
 }
 
-func readUnit() []byte {
+func readUnit() ([]byte, error) {
 
     body := `<Command>
     <Name>device_query</Name>
@@ -155,10 +164,12 @@ func readUnit() []byte {
 </Command>`
 
     rfaClient := &http.Client{}
+	defer rfaClient.CloseIdleConnections()
     // build a new request, but not doing the POST yet
     rfaReq, err := http.NewRequest("POST", "http://192.168.21.127/cgi-bin/post_manager/", bytes.NewBuffer([]byte(body)))
     if err != nil {
-        log.Println(err)
+        log.Printf("New Request rtn err:%v\n",err)
+		return nil,  err
     }
     rfaReq.Header.Add("Content-Type", "text/xml; charset=utf-8")
 	rfaReq.SetBasicAuth("006d60","4b0190726b0bbe37")
@@ -166,10 +177,11 @@ func readUnit() []byte {
     resp, err := rfaClient.Do(rfaReq)
     if err != nil {
         log.Printf("readUnit: Do rtn err:%v\n",err)
+		return nil, err
     }
 	defer resp.Body.Close()
 	bodyText, err := ioutil.ReadAll(resp.Body)
-	return bodyText
+	return bodyText , err
 }
 
 func insertReading(HWAddr string, instantDemand float32, sumDelivered float32, sumReceived float32) (err error) {
@@ -184,8 +196,9 @@ func insertReading(HWAddr string, instantDemand float32, sumDelivered float32, s
 	fields = map[string]interface{} {
 		"demand": instantDemand,
 		"delivered" : sumDelivered,
-		"received" : sumDelivered,
+		"received" : sumReceived,
 	}
+	// log.Println("debug return")
 
 	bp, err := client.NewBatchPoints(client.BatchPointsConfig{
 		Database: c.Db.DBName,
@@ -196,15 +209,21 @@ func insertReading(HWAddr string, instantDemand float32, sumDelivered float32, s
 		return err
 	}
 
+
     pt, err := client.NewPoint("meter_reading", tags, fields, time.Now())
     if err != nil {
-        log.Fatal(err)
+        log.Printf("NewPoint retn err:%V\n",err)
+		return err
     }
+
     bp.AddPoint(pt)
+
+	// *** return nil
 
     // Write the batch
     if err := inflClient.Write(bp); err != nil {
-        log.Fatal(err)
+        log.Printf("Write BP rtn err:%V\n",err)
+		return err
     }
 
 	return nil
@@ -215,6 +234,7 @@ func main() {
 	var err error
 	var HWaddr string
 	var instantDemand, sumDelivered, sumReceived float32
+	var bodyText []byte
 
 	flag.Parse()
 	log.SetFlags(0)
@@ -224,17 +244,15 @@ func main() {
 	}
 	initDB()
 	log.Printf("*** readFA: read rainforeest automation meter interface. Version%s ***",ourVersion)
-	bodyText := readUnit()
+	bodyText, err  = readUnit()
+	if err != nil {
+		log.Printf("readUnit err return:%v\n",err)
+		return
+	}
 	HWaddr, instantDemand, sumDelivered, sumReceived = parseMeterXML(bodyText)
 	log.Printf("meter HW address:%s\n",HWaddr)
 	log.Printf("instant demand:%f  sum total delivered:%f received:%f\n",instantDemand,sumDelivered,sumReceived)
 
 	readLoop()
-
-	// s := string(bodyText)
-	// 's' is now a string version of an XML response
-	// fmt.Println("XML formatted result:")
-	// fmt.Println(s)
-	// fmt.Println("---end---")
 }
 
