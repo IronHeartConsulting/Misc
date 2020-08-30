@@ -1,0 +1,14 @@
+[Unit]
+Description=PG&E meter reader and logger
+After=network-online.target
+
+[Service]
+User=kevin
+Group=kevin
+ExecStart=/home/kevin/go/bin/readRFA --config /home/kevin/go/bin/
+RestartSec=5s
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+

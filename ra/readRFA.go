@@ -16,9 +16,10 @@ import (
 )
 
 
-var ourVersion string = "V0.2"
+var ourVersion string = "V0.4"
 
 var dbgLvl = flag.Uint("debug",0,"debug level (0-3)")
+var cfgPath = flag.String("config",".","path to config file")
 
 
 var influxHostName string
@@ -89,6 +90,7 @@ func loadConfig() (err error){
 
     viper.SetConfigName("readRFA")
     viper.AddConfigPath(".")
+    viper.AddConfigPath(*cfgPath)
     err = viper.ReadInConfig()
     if err != nil {
         log.Printf("Config file error:%S",err)
