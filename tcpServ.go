@@ -5,6 +5,7 @@ import (
     "net"
     "os"
 	"encoding/hex"
+	"encoding/binary"
 	"time"
 )
 
@@ -15,41 +16,30 @@ const (
     CONN_TYPE = "tcp"
 )
 
+const	timeLayout = time.RFC850
+
 type byteField struct {
 	fName	string
 	fStart	int				// offset to start of field
 	fLen	int				// count of bytes in field
 	fType	int				//
+	fDiv	int				// scale factor, or divisor
 	fID		int				// field ID
 }
 
 const (
 	tInteger = iota
-	tInteger10				// in tenths
-	tInteger100				// in hundereths
 	tFloat
 	tString
 )
 
 var fPkt []byteField
+var	mapBF	map[int]byteField
+var recvBuf []byte
+var recvLen	int
 
 const (
 	header	= "685951b0"
-	sn		= 15
-	temp	= 31
-	vdc1	= 33
-	vdc2	= 35
-	DCamps1	= 39
-	DCamps2	= 41
-	ACamps	= 45
-	ACVolt	= 51
-	freq	= 57
-	watts	= 59
-	kwh_yd	= 67
-	kwhDY	= 69
-	kWhtot	= 71
-	kWhmth	= 87
-	kWhlm	= 91
 )
 
 const (
@@ -74,6 +64,7 @@ var dumpFile *os.File
 
 func init() {
 
+	recvBuf = make([]byte, 1024)
 	// init the packet field array
 	fPkt = []byteField {
 		byteField {
@@ -81,6 +72,7 @@ func init() {
 		fStart:	0,
 		fLen:	4,
 		fType:	tInteger,
+		fDiv:	1,
 		fID:	fID_header,
 		},
 		byteField {
@@ -94,84 +86,96 @@ func init() {
 		fName:	"Temperature",
 		fStart:	31,
 		fLen:	2,
-		fType:	tInteger10,
+		fType:	tInteger,
+		fDiv:	10,
 		fID:	fID_temp,
 		},
 		byteField {
 		fName:	"Voltage DC1",
 		fStart:	33,
 		fLen:	2,
-		fType:	tInteger10,
+		fType:	tInteger,
+		fDiv:	10,
 		fID:	fID_vdc1,
 		},
 		byteField {
 		fName:	"Voltage DC2",
 		fStart:	35,
 		fLen:	2,
-		fType:	tInteger10,
+		fType:	tInteger,
+		fDiv:	10,
 		fID:	fID_vdc2,
 		},
 		byteField {
 		fName:	"Amps DC1",
 		fStart:	39,
 		fLen:	2,
-		fType:	tInteger10,
+		fType:	tInteger,
+		fDiv:	10,
 		fID:	fID_DCamps1,
 		},
 		byteField {
 		fName:	"Amps DC2",
 		fStart:	41,
 		fLen:	2,
-		fType:	tInteger10,
+		fType:	tInteger,
+		fDiv:	10,
 		fID:	fID_DCamps2,
 		},
 		byteField {
 		fName:	"AC amps",
 		fStart:	45,
 		fLen:	2,
-		fType:	tInteger10,
+		fType:	tInteger,
+		fDiv:	10,
 		fID:	fID_ACamps,
 		},
 		byteField {
 		fName:	"AC voltage",
 		fStart:	51,
 		fLen:	2,
-		fType:	tInteger10,
+		fType:	tInteger,
+		fDiv:	10,
 		fID:	fID_ACvolt,
 		},
 		byteField {
 		fName:	"Frequency (Hz)",
 		fStart:	57,
 		fLen:	2,
-		fType:	tInteger100,
+		fType:	tInteger,
+		fDiv:	100,
 		fID:	fID_freq,
 		},
 		byteField {
-		fName:	"Watts so far today",
+		fName:	"Watts",
 		fStart:	59,
 		fLen:	2,
-		fType:	tInteger100,
+		fType:	tInteger,
+		fDiv:	1,
 		fID:	fID_watts,
 		},
 		byteField {
 		fName:	"kWh yesterday",
 		fStart:	67,
 		fLen:	2,
-		fType:	tInteger100,
+		fType:	tInteger,
+		fDiv:	100,
 		fID:	fID_kWhYD,
 		},
 		byteField {
 		fName:	"kWh today",
 		fStart:	69,
 		fLen:	2,
-		fType:	tInteger100,
+		fType:	tInteger,
+		fDiv:	100,
 		fID:	fID_kWhDY,
 		},
 		byteField {
 		fName:	"kWh total",
 		fStart:	71,
 		fLen:	4,
-		fType:	tInteger10,
+		fType:	tInteger,
+		fDiv:	10,
 		fID:	fID_kWhtot,
 		},
 		byteField {
@@ -179,6 +183,7 @@ func init() {
 		fStart:	87,
 		fLen:	2,
 		fType:	tInteger,
+		fDiv:	1,
 		fID:	fID_kWhmth,
 		},
 		byteField {
@@ -186,15 +191,54 @@ func init() {
 		fStart:	91,
 		fLen:	2,
 		fType:	tInteger,
+		fDiv:	1,
 		fID:	fID_kWhlm,
 		},
 	}
-	// iterate over the arary just built...
-	for i, bF := range fPkt {
-		fmt.Printf("index:%d elem:%v\n",i, bF)
+	mapBF = make(map[int]byteField)
+	// iterate over the array just built...
+	for _, bF := range fPkt {
+		mapBF[bF.fID] = bF
+		//** fmt.Printf("index:%d elem:%v\n",i, bF)
 	}
+	// echo the map 
+	// for bfID, bF := range mapBF {
+	// 	fmt.Printf("ID:%v BF%v\n",bfID,bF)
+	// }
 
 }
+
+
+//  get a value field from the buffer
+//  Input: byteField Output:flaot64 value
+//	
+func  gfFloat(BF byteField) (float64) {
+	rtnVal := -1.99
+	// BF := mapBF[fID]
+	// fmt.Printf("getField:%v\n",BF)
+	switch BF.fLen {
+	case 2:
+		intVal := binary.BigEndian.Uint16(recvBuf[BF.fStart:])
+		rtnVal = (float64(intVal))/float64(BF.fDiv)
+	case 4:
+		intVal := binary.BigEndian.Uint32(recvBuf[BF.fStart:])
+		rtnVal = (float64(intVal))/float64(BF.fDiv)
+	default:
+		fmt.Printf("getField: err - unknown field len:%d\n",BF.fLen)
+	}
+	return rtnVal
+}
+
+//  get a string field from the buffer
+//  Input: byteField Output:
+//	
+func  gfString(BF byteField) ([]byte) {
+	fEnd := BF.fLen + BF.fStart
+	rtnval := make([]byte,BF.fLen)
+	copy(rtnval, recvBuf[BF.fStart:fEnd])
+	return rtnval
+}
+
 
 func main() {
 	var err error
@@ -228,7 +272,7 @@ func main() {
             os.Exit(1)
         }
 		ra := conn.RemoteAddr().(*net.TCPAddr)
-		fmt.Printf("client addr:%v\n",ra)
+		fmt.Printf("client addr:%v  ",ra)
         // Handle connections in a new goroutine.
         go handleRequest(conn)
     }
@@ -236,19 +280,37 @@ func main() {
 
 // Handles incoming requests.
 func handleRequest(conn net.Conn) {
-	// Make a buffer to hold incoming data.
-	buf := make([]byte, 1024)
+	var value float64
+	// var BF byteField
+	// printList := [...]int{fID_vdc1, fID_DCamps1, fID_vdc2, fID_DCamps2, fID_ACvolt, fID_ACamps,
+	//			fID_freq, fID_watts, fID_kWhDY, fID_temp }
+	printList := [...]int{fID_watts, fID_kWhDY, fID_kWhtot, fID_vdc1, fID_DCamps1, fID_vdc2,
+			fID_DCamps2, fID_ACvolt, fID_ACamps, fID_freq,fID_kWhYD, fID_kWhmth, fID_kWhlm, fID_temp }
+
 	// Read the incoming connection into the buffer.
-	reqLen, err := conn.Read(buf)
+	reqLen, err := conn.Read(recvBuf)
 	if err != nil {
-	fmt.Println("Error reading:", err.Error())
+		fmt.Println("Error reading:", err.Error())
 	}
 	fmt.Println("msg from inverter, len:",reqLen)
-	fmt.Printf("%s\n",time.Now())
-	fmt.Println(hex.Dump(buf[0:reqLen]))
-	_, err = fmt.Fprintf(dumpFile, string(buf[0:reqLen]))
+	fmt.Println(hex.Dump(recvBuf[0:reqLen]))
+	_, err = fmt.Fprintf(dumpFile, string(recvBuf[0:reqLen]))
 	if err != nil {
 		fmt.Println("Error writing:", err.Error())
 	}
+
+	// print the S/N
+	// BF := mapBF[fID_sn]
+	fmt.Printf("S/N:%s\n",string(gfString(mapBF[fID_sn])))
+	t:= time.Now()
+	fmt.Printf("%s ", t.Format(timeLayout))
+	for _, fieldID := range printList {
+		BF := mapBF[fieldID]
+		value = gfFloat(BF)
+		// BF = mapBF[fieldID]
+		// fmt.Printf("%s:%.2f\n",BF.fName,value)
+		fmt.Printf("%.2f ",value)
+	}
+	fmt.Printf("\n")
 	conn.Close()
 }
