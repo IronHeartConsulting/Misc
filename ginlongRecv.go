@@ -15,7 +15,7 @@ import (
 )
 
 
-var ourVersion string = "V0.3"
+var ourVersion string = "V0.4"
 var dbgLvl uint
 
 var flagDbgLvl = flag.Uint("debug",0,"debug level (0-3)")
@@ -64,12 +64,21 @@ type byteField struct {
 	fType	int				//
 	fDiv	int				// scale factor, or divisor
 	fID		int				// field ID
+	fDBfreq	int				// rate to store in DB - generation data (Spot); cumulative (kWh for some period)
+	fDBFname	string		// name of DB tag, or field name
 }
 
 const (
 	tInteger = iota
 	tFloat
 	tString
+)
+
+const (
+	DBFSpot = iota	// power generation data
+	DBFCum			// cumulative data
+	DBFcom			// common for all record types
+	DBFna			// don't store field in DB
 )
 
 var fPkt []byteField
@@ -113,6 +122,7 @@ func init() {
 		fType:	tInteger,
 		fDiv:	1,
 		fID:	fID_header,
+		fDBfreq: DBFna,
 		},
 		byteField {
 		fName:	"S/N",
@@ -120,6 +130,8 @@ func init() {
 		fLen:	17,
 		fType:	tString,
 		fID:	fID_sn,
+		fDBfreq: DBFcom,
+		fDBFname: "shortSN",
 		},
 		byteField {
 		fName:	"Temperature",
@@ -128,6 +140,8 @@ func init() {
 		fType:	tInteger,
 		fDiv:	10,
 		fID:	fID_temp,
+		fDBfreq: DBFSpot,
+		fDBFname: "temp",
 		},
 		byteField {
 		fName:	"Voltage DC1",
@@ -136,6 +150,8 @@ func init() {
 		fType:	tInteger,
 		fDiv:	10,
 		fID:	fID_vdc1,
+		fDBfreq: DBFSpot,
+		fDBFname: "dc1volt",
 		},
 		byteField {
 		fName:	"Voltage DC2",
@@ -144,6 +160,8 @@ func init() {
 		fType:	tInteger,
 		fDiv:	10,
 		fID:	fID_vdc2,
+		fDBfreq: DBFSpot,
+		fDBFname: "dc2volt",
 		},
 		byteField {
 		fName:	"Amps DC1",
@@ -152,6 +170,8 @@ func init() {
 		fType:	tInteger,
 		fDiv:	10,
 		fID:	fID_DCamps1,
+		fDBfreq: DBFSpot,
+		fDBFname: "dc1amps",
 		},
 		byteField {
 		fName:	"Amps DC2",
@@ -160,6 +180,8 @@ func init() {
 		fType:	tInteger,
 		fDiv:	10,
 		fID:	fID_DCamps2,
+		fDBfreq: DBFSpot,
+		fDBFname: "dc2amps",
 		},
 		byteField {
 		fName:	"AC amps",
@@ -168,6 +190,8 @@ func init() {
 		fType:	tInteger,
 		fDiv:	10,
 		fID:	fID_ACamps,
+		fDBfreq: DBFSpot,
+		fDBFname: "acamps",
 		},
 		byteField {
 		fName:	"AC voltage",
@@ -176,6 +200,8 @@ func init() {
 		fType:	tInteger,
 		fDiv:	10,
 		fID:	fID_ACvolt,
+		fDBfreq: DBFSpot,
+		fDBFname: "acvolt",
 		},
 		byteField {
 		fName:	"Frequency (Hz)",
@@ -184,6 +210,8 @@ func init() {
 		fType:	tInteger,
 		fDiv:	100,
 		fID:	fID_freq,
+		fDBfreq: DBFSpot,
+		fDBFname: "freq",
 		},
 		byteField {
 		fName:	"Watts",
@@ -192,6 +220,8 @@ func init() {
 		fType:	tInteger,
 		fDiv:	1,
 		fID:	fID_watts,
+		fDBfreq: DBFSpot,
+		fDBFname: "watts",
 		},
 		byteField {
 		fName:	"kWh yesterday",
@@ -200,6 +230,8 @@ func init() {
 		fType:	tInteger,
 		fDiv:	100,
 		fID:	fID_kWhYD,
+		fDBfreq: DBFCum,
+		fDBFname: "kWhYD",
 		},
 		byteField {
 		fName:	"kWh today",
@@ -208,6 +240,8 @@ func init() {
 		fType:	tInteger,
 		fDiv:	100,
 		fID:	fID_kWhDY,
+		fDBfreq: DBFCum,
+		fDBFname: "kWhDY",
 		},
 		byteField {
 		fName:	"kWh total",
@@ -216,6 +250,8 @@ func init() {
 		fType:	tInteger,
 		fDiv:	10,
 		fID:	fID_kWhtot,
+		fDBfreq: DBFCum,
+		fDBFname: "kWhtot",
 		},
 		byteField {
 		fName:	"kWh this month",
@@ -224,6 +260,8 @@ func init() {
 		fType:	tInteger,
 		fDiv:	1,
 		fID:	fID_kWhmth,
+		fDBfreq: DBFCum,
+		fDBFname: "kWhmth",
 		},
 		byteField {
 		fName:	"kWh last month",
@@ -232,6 +270,8 @@ func init() {
 		fType:	tInteger,
 		fDiv:	1,
 		fID:	fID_kWhlm,
+		fDBfreq: DBFCum,
+		fDBFname: "kWhcum",
 		},
 	}
 	mapBF = make(map[int]byteField)
@@ -339,7 +379,7 @@ func  gfFloat(BF byteField) (float64) {
 func  gfString(BF byteField) ([]byte) {
 	fEnd := BF.fLen + BF.fStart
 	rtnval := make([]byte,BF.fLen)
-	copy(rtnval, recvBuf[BF.fStart:fEnd])
+	copy  (rtnval, recvBuf[BF.fStart:fEnd])
 	return rtnval
 }
 
@@ -370,13 +410,83 @@ func handleRequest(conn net.Conn) {
 	for _, fieldID := range printList {
 		BF := mapBF[fieldID]
 		value = gfFloat(BF)
-		if dbgLvl >= 2 {fmt.Printf("%s:%.2f\n",BF.fName,value) }
+		if dbgLvl >= 3 {fmt.Printf("%s:%.2f\n",BF.fName,value) }
 		fmt.Printf("%.2f ",value)
 	}
 	fmt.Printf("\n")
+	//  call insert function for generation data (spot)
+	insertReading(DBFSpot)
 	conn.Close()
 }
 
+// insert either generation data (spot), or cummulative generation data into DB
+//   input: type of data to insert 
+//   uses the global recvBuf
+func insertReading( DBfreq int ) (err error) {
+
+	var tags map[string]string
+	var fields map[string]interface{}
+
+	tags = make(map[string]string)
+	fields = make(map[string]interface{})
+	//  tags- use the SN, and data ttype - influx uses tags to index on
+	BF := mapBF[fID_sn]
+	sn := gfString(BF)
+	tags[BF.fDBFname] = string(sn[len(sn)-6:])
+	if DBfreq == DBFSpot {
+		tags["freq"] = "spot"
+	} else if DBfreq == DBFCum {
+		tags["freq"] = "cum"
+	}
+	if dbgLvl >= 3 { fmt.Printf("insert: selected DB Freq:%d\n",DBfreq) }
+
+	//  iterate over all the field IDs
+	for  fieldID := range mapBF {
+		BF := mapBF[fieldID]
+		if dbgLvl >= 3 {fmt.Printf("insert: %s:%d\n",BF.fName,BF.fDBfreq) }
+		if BF.fDBfreq == DBfreq {
+			if dbgLvl >= 3 {fmt.Printf("insert: %s:%d\n",BF.fName,BF.fType) }
+			switch  BF.fType {
+			case tInteger:
+				fields[BF.fDBFname] = gfFloat(BF)
+			case tFloat:
+				// don't know what to do with a flaot
+			case tString:
+				// a string?  Wow
+			}
+		}
+	}
+	if dbgLvl >= 1 {
+		fmt.Printf("tags:%v\n",tags)
+		fmt.Printf("fields:%v\n",fields)
+	}
+
+    bp, err := client.NewBatchPoints(client.BatchPointsConfig{
+        Database: c.Db.DBName,
+        Precision: "s",
+    })
+    if err != nil {
+        fmt.Printf("New Batch Points err:%v",err)
+        return err
+    }
+
+
+    pt, err := client.NewPoint("invertor_data", tags, fields, time.Now())
+    if err != nil {
+        fmt.Printf("NewPoint retn err:%V\n",err)
+        return err
+    }
+
+    bp.AddPoint(pt)
+
+    // Write the batch
+    if err := inflClient.Write(bp); err != nil {
+		fmt.Printf("Write BP rtn err:%V\n",err)
+		return err
+    }
+
+	return nil
+}
 
 func main() {
 	var err error

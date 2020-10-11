@@ -1,14 +1,11 @@
 title = "TOML format config associated with reading ginlong/Solis solar inverters"
 debugLevel = 1
 
-test_name="testing"
-
 [database]
 server = "chester.local"
-DBName = "energy"
+DBName = "solar"
 username = "K6TD"
 password = "magic4052"
 
 [IPinfo]
 tcpport = "8510"
-xxx = "string"
