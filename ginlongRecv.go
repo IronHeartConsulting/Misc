@@ -9,17 +9,19 @@ import (
 	"time"
 	"flag"
 	"strconv"
+	"errors"
 
 	"github.com/spf13/viper"
 	"github.com/influxdata/influxdb1-client/v2"
 )
 
 
-var ourVersion string = "V0.4"
+var ourVersion string = "V0.5"
 var dbgLvl uint
 
 var flagDbgLvl = flag.Uint("debug",0,"debug level (0-3)")
 var cfgPath = flag.String("config",".","path to config file")
+var iName		= flag.String("instance","","instance name(from config file)")
 
 
 var inflClient  client.Client
@@ -27,6 +29,7 @@ var configTitle string
 var configDbgLvl uint
 var configFile = "ginlong"   // default.  cmdline --config overrides
 var	la net.TCPAddr
+var cfgTCPport	string
 
 
 // config structures
@@ -41,9 +44,15 @@ type IPConfig struct {
 	Tcpport string `mapstructure:"tcpport"`
 }
 
+type InstanceConfig struct {
+	Name	string `mapstructure:"name"`
+	Tcpport string `mapstructure:"tcpport"`
+}
+
 type Config struct {
     Db DatabaseConfig `mapstructure:"database"`
 	IPinfo IPConfig `mapstructure:"IPinfo"`
+	Instance []InstanceConfig
 }
 
 var c Config
@@ -108,7 +117,7 @@ const (
 	fID_kWhmth
 	fID_kWhlm
 )
-var dumpFile *os.File
+// var dumpFile *os.File
 
 func init() {
 
@@ -312,8 +321,8 @@ func initDB() error {
 func initServer() {
 	la.IP = net.IPv4(0, 0, 0, 0)
 
-	la.Port, _ = strconv.Atoi(c.IPinfo.Tcpport)
-	// la.Port = CONN_PORT
+	// la.Port, _ = strconv.Atoi(c.IPinfo.Tcpport)
+	la.Port, _ = strconv.Atoi(cfgTCPport)
 }
 
 // retrieve general config informoation
@@ -348,7 +357,24 @@ func loadConfig() (err error){
 			dbgLvl = *flagDbgLvl
 		}
 	})
-    return (nil)
+	instMatch := false
+	// iterate over configured instances, lookking for a name that matches us
+	for _, x := range c.Instance {
+		if x.Name == *iName {  // found our instance configuraiton
+			fmt.Printf("*match* ")
+			cfgTCPport = x.Tcpport
+			instMatch = true
+		}
+		fmt.Printf("config:")
+		fmt.Printf(" Name:%s",x.Name)
+		fmt.Printf(" tcpport:%s\n",x.Tcpport)
+	}
+	fmt.Printf("config: TCP Port%s\n",cfgTCPport)
+	if instMatch {
+		return (nil)
+	} else {
+		return errors.New("no matching instance in config file")
+	}
 
 }
 
@@ -399,10 +425,10 @@ func handleRequest(conn net.Conn) {
 	}
 	if dbgLvl >= 1 {fmt.Println("msg from inverter, len:",reqLen) }
 	if dbgLvl >= 2 { fmt.Println(hex.Dump(recvBuf[0:reqLen])) }
-	_, err = fmt.Fprintf(dumpFile, string(recvBuf[0:reqLen]))
-	if err != nil {
-		fmt.Println("Error writing:", err.Error())
-	}
+	// _, err = fmt.Fprintf(dumpFile, string(recvBuf[0:reqLen]))
+	// if err != nil {
+	// 		fmt.Println("Error writing:", err.Error())
+	// }
 
 	if dbgLvl >= 1 { fmt.Printf("S/N:%s\n",string(gfString(mapBF[fID_sn]))) }
 	t:= time.Now()
@@ -456,7 +482,7 @@ func insertReading( DBfreq int ) (err error) {
 			}
 		}
 	}
-	if dbgLvl >= 1 {
+	if dbgLvl >= 4 {
 		fmt.Printf("tags:%v\n",tags)
 		fmt.Printf("fields:%v\n",fields)
 	}
@@ -493,21 +519,26 @@ func main() {
 	flag.Parse()
 
 	fmt.Printf("*** ginlong: server for ginlong data write. Version:%s ***\n",ourVersion)
+	if *iName == "" {
+		fmt.Printf("-instance required\n")
+		os.Exit(1)
+	}
 	err = loadConfig()
 	fmt.Printf("debug level:%d\n",dbgLvl)
 	if  err != nil {
+		fmt.Println(err)
 		os.Exit(1)
 	}
 
 	initDB()
 	initServer()
 
-	dumpFile, err = os.OpenFile("inverter_dump", os.O_WRONLY|os.O_CREATE, 0666)
+	// dumpFile, err = os.OpenFile("inverter_dump", os.O_WRONLY|os.O_CREATE, 0666)
 	if err != nil {
 		fmt.Println("File does not exist or cannto be created")
 		os.Exit(1)
 	}
-	defer dumpFile.Close()
+	// defer dumpFile.Close()
 
     // Listen for incoming connections.
     l, err := net.ListenTCP(CONN_TYPE, &la)
@@ -517,7 +548,7 @@ func main() {
     }
     // Close the listener when the application closes.
     defer l.Close()
-    fmt.Println("Listening on " + CONN_HOST + ":" + c.IPinfo.Tcpport)
+    fmt.Println("Listening on " + CONN_HOST + ":" + cfgTCPport)
 	// fmt.Printf("interface:%v\n",l.Addr)
     for {
         // Listen for an incoming connection.
