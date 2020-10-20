@@ -7,14 +7,14 @@ DBName = "solar"
 username = "K6TD"
 password = "magic4052"
 
-#[IPinfo]
-#tcpport = "8510"
+[IPinfo]
+tcpport = "8510"
 
 [[Instance]]
 name = "inv_1"
-tcpport = " 8510"
+tcpport = "8510"
 
 [[Instance]]
 name = "inv_2"
-tcpport = " 8520"
+tcpport = "8520"
 

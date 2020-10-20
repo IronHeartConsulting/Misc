@@ -10,6 +10,7 @@ import (
 	"flag"
 	"strconv"
 	"errors"
+	"bytes"
 
 	"github.com/spf13/viper"
 	"github.com/influxdata/influxdb1-client/v2"
@@ -136,7 +137,7 @@ func init() {
 		byteField {
 		fName:	"S/N",
 		fStart:	15,
-		fLen:	17,
+		fLen:	16,
 		fType:	tString,
 		fID:	fID_sn,
 		fDBfreq: DBFcom,
@@ -403,9 +404,10 @@ func  gfFloat(BF byteField) (float64) {
 //  Input: byteField Output:
 //	
 func  gfString(BF byteField) ([]byte) {
-	fEnd := BF.fLen + BF.fStart
+	fEnd := (BF.fLen + BF.fStart) - 1
 	rtnval := make([]byte,BF.fLen)
-	copy  (rtnval, recvBuf[BF.fStart:fEnd])
+	// fmt.Printf("gfString: start:%d Len:%d end:%d\n",BF.fStart, BF.fLen, fEnd)
+	copy  (rtnval, bytes.TrimSpace(recvBuf[BF.fStart:fEnd]))
 	return rtnval
 }
 
@@ -458,7 +460,11 @@ func insertReading( DBfreq int ) (err error) {
 	//  tags- use the SN, and data ttype - influx uses tags to index on
 	BF := mapBF[fID_sn]
 	sn := gfString(BF)
-	tags[BF.fDBFname] = string(sn[len(sn)-6:])
+	// fmt.Printf("insert: SN []byte len:%d\n",len(sn))
+	last4Pos := len(sn)-5
+	// fmt.Printf("insert:last4Pos:%d sn:%s\n",last4Pos, sn)
+	tags[BF.fDBFname] = string(sn[last4Pos:last4Pos+4])
+	// fmt.Printf("insert: shortSN:%s\n",tags[BF.fDBFname])
 	if DBfreq == DBFSpot {
 		tags["freq"] = "spot"
 	} else if DBfreq == DBFCum {
