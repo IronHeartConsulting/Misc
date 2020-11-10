@@ -112,7 +112,7 @@ func loadConfig() (err error){
 
 }
 
-func readLoop() {
+func readLoop() (error) {
 
 	var instantDemand float32
 	var sumDelivered, sumReceived float32
@@ -124,7 +124,7 @@ func readLoop() {
 		bodyText, err = readUnit()
 		if err != nil {
 			log.Printf("readUnit returned err:%v\n",err)
-			return
+			return err
 		}
 		HWAddr, instantDemand, sumDelivered, sumReceived = parseMeterXML(bodyText)
 		err = nil
@@ -132,7 +132,7 @@ func readLoop() {
 		if err != nil {
 			log.Println("insertReaading returned err%s",err)
 			// log.Println(HWAddr)
-			return
+			return err
 		}
 		log.Printf("instant demand:%f  sum total delivered:%f received:%f Used:%f\n",
 					instantDemand,sumDelivered,sumReceived,sumDelivered-sumReceived)
@@ -255,6 +255,9 @@ func main() {
 	log.Printf("meter HW address:%s\n",HWaddr)
 	log.Printf("instant demand:%f  sum total delivered:%f received:%f\n",instantDemand,sumDelivered,sumReceived)
 
-	readLoop()
+	err = readLoop()
+	if err != nil {
+		os.Exit(4)
+	}
 }
 
