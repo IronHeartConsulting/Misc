@@ -13,6 +13,10 @@
 
 sHATADC
 sHATi2c
+sHATPB
+sHATclrPB
+sHATspi
+sHATvibr
 TCamp
 ginlongRecv
 tcpServ

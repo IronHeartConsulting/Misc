@@ -1,0 +1,88 @@
+//  serialMdmCtl - read and control the DTR and RT lines of a serial port
+package main
+
+import (
+	"fmt"
+	"flag"
+
+	// "github.com/pkg/term"
+	ser "github.com/chimera/go-inside/rs232"
+)
+
+var devName = flag.String("dev", "???", "device name/path to control")
+var verbose = flag.Bool("v", false,  "if set, put out more info")
+var pause = flag.Bool("p", false,  "if set, pause beofre exiting")
+var stateOnly = flag.Bool("s", false,  "if set just print the state, and exit")
+var p *ser.Port
+
+func printInfo( mdmSig string, mdmSet string) {
+
+	stateDTR, err := p.GetDTR()
+	if err != nil {
+		fmt.Printf("%s\n",err)
+		return
+	}
+	stateRTS, err := p.GetRTS()
+	if err != nil {
+		fmt.Printf("%s\n",err)
+		return
+	}
+	fmt.Printf("device:%s signal:%s state:%s\n",*devName, mdmSig, mdmSet)
+	fmt.Printf("DTR:%t RTS:%t\n",stateDTR, stateRTS)
+}
+
+
+func main()  {
+	var err error
+	var portOpts ser.Options
+
+	flag.Parse()
+	if flag.NArg() != 2 {
+		flag.PrintDefaults()
+		fmt.Println("signal = DTR|RTS state = on|off")
+		return
+	}
+	mdmSig := flag.Arg(0)
+	mdmSet := flag.Arg(1)
+
+	portOpts.BitRate  = 38400
+	portOpts.DataBits = 8
+	portOpts.StopBits = 1
+	portOpts.Parity   = 0
+	portOpts.Timeout  = 0
+	p, err = ser.Open(*devName,portOpts)
+	if err != nil {
+		fmt.Printf("%s\n",err)
+		return
+	}
+	defer p.Close()
+	if (*verbose  || *stateOnly ) {
+		printInfo(mdmSig, mdmSet)
+	}
+	if *stateOnly {
+		return
+	}
+	switch mdmSig {
+	case "DTR":
+		switch mdmSet {
+		case "on":
+			p.SetDTR(true)
+		case "off":
+			p.SetDTR(false)
+		}
+	case "RTS":
+		switch mdmSet {
+		case "on":
+			p.SetRTS(true)
+		case "off":
+			p.SetRTS(false)
+		}
+	}
+	if *verbose {
+		printInfo(mdmSig, mdmSet)
+	}
+	if *pause {
+		fmt.Println("Paused - Press Enter to resume")
+		fmt.Scanln()
+	}
+}

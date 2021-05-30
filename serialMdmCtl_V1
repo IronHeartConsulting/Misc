@@ -1,0 +1,74 @@
+//  serialMdmCtl - read and control the DTR and RT lines of a serial port
+package main
+
+import (
+	"fmt"
+	"flag"
+
+	"github.com/pkg/term"
+)
+
+var devName = flag.String("dev", "???", "device name/path to control")
+var verbose = flag.Bool("v", false,  "if set, put out more info")
+var t *term.Term
+
+func printInfo( mdmSig string, mdmSet string) {
+
+	stateDTR, err := t.DTR()
+	if err != nil {
+		fmt.Printf("%s\n",err)
+		return
+	}
+	stateRTS, err := t.RTS()
+	if err != nil {
+		fmt.Printf("%s\n",err)
+		return
+	}
+	fmt.Printf("device:%s signal:%s state:%s\n",*devName, mdmSig, mdmSet)
+	fmt.Printf("DTR:%t RTS:%t\n",stateDTR, stateRTS)
+}
+
+
+func main()  {
+	var err error
+
+	flag.Parse()
+	if flag.NArg() != 2 {
+		flag.PrintDefaults()
+		fmt.Println("signal = DTR|RTS state = on|off")
+		return
+	}
+	mdmSig := flag.Arg(0)
+	mdmSet := flag.Arg(1)
+
+	t, err = term.Open(*devName)
+	if err != nil {
+		fmt.Printf("%s\n",err)
+		return
+	}
+	defer t.Close()
+	if *verbose {
+		printInfo(mdmSig, mdmSet)
+	}
+	switch mdmSig {
+	case "DTR":
+		switch mdmSet {
+		case "on":
+			t.SetDTR(true)
+		case "off":
+			t.SetDTR(false)
+		}
+	case "RTS":
+		switch mdmSet {
+		case "on":
+			t.SetRTS(true)
+		case "off":
+			t.SetRTS(false)
+		}
+	}
+	if *verbose {
+		printInfo(mdmSig, mdmSet)
+	}
+	fmt.Println("Paused - Press Enter to resume")
+	fmt.Scanln()
+}

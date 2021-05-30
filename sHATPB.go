@@ -1,5 +1,6 @@
 //
 //	  I2C test for secureHAT  V2
+//		just the Pushbutton
 //
 //
 
@@ -101,7 +102,16 @@ func initPE() {
 		lg.Fatal(err)
 	}
 	lg.Infof("wrote count:%d bytes",ioCount)
-	shadowPEGPIO = 0xe0  // all three LEDS off, vibrator off, SR latch not pulsed
+
+	i2cBuf[0] = peGPPU
+	i2cBuf[1] = 0x12
+	ioCount, err = i2cHandle.WriteBytes(i2cBuf)
+	if err != nil {
+		lg.Fatal(err)
+	}
+	lg.Infof("wrote count:%d bytes",ioCount)
+
+	shadowPEGPIO = 0xe2  // all three LEDS off, vibrator off, SR latch not pulsed
 
 }
 
@@ -148,6 +158,7 @@ func writeGPIO() {
 	i2cBuf = i2cBuf[:2]
 	i2cBuf[0] = peGPIO
 	i2cBuf[1] = shadowPEGPIO
+	// fmt.Printf("iobuf:%v\n",i2cBuf)
 	ioCount, err = i2cHandle.WriteBytes(i2cBuf)
 	if err != nil {
 		lg.Fatal(err)
@@ -195,7 +206,7 @@ func vibrOFF(vibr byte)  {
 func clearPBLatch(pb byte)  {
 	shadowPEGPIO = shadowPEGPIO | pb
 	writeGPIO()
-	time.Sleep(5* time.Millisecond)
+	time.Sleep(5 * time.Millisecond)
 	shadowPEGPIO = shadowPEGPIO & ^pb
 	writeGPIO()
 }
@@ -211,7 +222,7 @@ func main() {
 	debugFlag := flag.Bool("debug", false, "control debugging output")
 	flag.Parse()
 
-	lg.Info("secureHAT V2 I2C test V0.2")
+	lg.Info("secureHAT V2 I2C test V0.3")
 
 	defer logger.FinalizeLogger()
 	// Create new connection to i2c-bus on 1 line with address 0x40.
@@ -233,30 +244,28 @@ func main() {
 	initPE()
 	readGPIO()
 	writeGPIO()
-	clearPBLatch(PBReset)
 	LEDaOFF()
-	time.Sleep(5* time.Second)
-	LEDon(LED_RED)
-	time.Sleep(5* time.Second)
-	LEDon(LED_GRN)
-	time.Sleep(5* time.Second)
-	LEDon(LED_BLU)
-	time.Sleep(5* time.Second)
-	LEDaOFF()
-	vibrON(VIBR)
-	time.Sleep(5* time.Second)
 	vibrOFF(VIBR)
+	LEDoff(LED_GRN)
+	ledState := false  // meaning off
 	// loop waiting for PB to come on
-	lg.Debug("starting PB loop")
+	//  PB pressess alternate GREEN LED on and OFF
+	lg.Info("starting PB loop***************")
 	clearPBLatch(PBReset)
 	for {
 		readGPIO()
-		time.Sleep(1* time.Second)
-		LEDoff(LED_GRN)
-		if GPIOButton & PB != 0 {  // button pressed
+		if GPIOButton & PB == 0 {  // button pressed
+			lg.Info("PB pressed!")
 			clearPBLatch(PBReset)
-			LEDon(LED_GRN)
+			if ledState {	// ON
+				LEDoff(LED_GRN)
+				ledState = false
+			} else {
+				LEDon(LED_GRN)
+				ledState = true
+			}
 			// break
 		}
+		time.Sleep(2000 * time.Millisecond)
 	}
 }

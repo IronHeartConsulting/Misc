@@ -1,5 +1,6 @@
 //
 //	  I2C test for secureHAT  V2
+//		loop on clear PB latch
 //
 //
 
@@ -8,6 +9,9 @@ package main
 import (
 	"flag"
 	"time"
+	"os"
+	"bufio"
+	"fmt"
 
 	i2c "github.com/d2r2/go-i2c"
 	logger "github.com/d2r2/go-logger"
@@ -233,30 +237,20 @@ func main() {
 	initPE()
 	readGPIO()
 	writeGPIO()
-	clearPBLatch(PBReset)
 	LEDaOFF()
-	time.Sleep(5* time.Second)
-	LEDon(LED_RED)
-	time.Sleep(5* time.Second)
-	LEDon(LED_GRN)
-	time.Sleep(5* time.Second)
-	LEDon(LED_BLU)
-	time.Sleep(5* time.Second)
-	LEDaOFF()
-	vibrON(VIBR)
-	time.Sleep(5* time.Second)
 	vibrOFF(VIBR)
-	// loop waiting for PB to come on
-	lg.Debug("starting PB loop")
+	// need to clear latch after boot..make sure hte SR latch is in the set state
 	clearPBLatch(PBReset)
+	// loop on input, and clear PB latch
+	lg.Info("starting PB latch clear loop")
+	rdrsin := bufio.NewReader(os.Stdin)
 	for {
+		fmt.Printf("clear PB latch? ")
+		rdrsin.ReadString('\n')
 		readGPIO()
-		time.Sleep(1* time.Second)
-		LEDoff(LED_GRN)
-		if GPIOButton & PB != 0 {  // button pressed
-			clearPBLatch(PBReset)
-			LEDon(LED_GRN)
-			// break
+		if GPIOButton > 0 {
+			lg.Info("PB active")
 		}
+		clearPBLatch(PBReset)
 	}
 }
