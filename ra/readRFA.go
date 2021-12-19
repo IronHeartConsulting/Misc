@@ -168,7 +168,7 @@ func readUnit() ([]byte, error) {
     rfaClient := &http.Client{}
 	defer rfaClient.CloseIdleConnections()
     // build a new request, but not doing the POST yet
-    rfaReq, err := http.NewRequest("POST", "http://192.168.21.127/cgi-bin/post_manager/", bytes.NewBuffer([]byte(body)))
+    rfaReq, err := http.NewRequest("POST", "http://192.168.21.171/cgi-bin/post_manager/", bytes.NewBuffer([]byte(body)))
     if err != nil {
         log.Printf("New Request rtn err:%v\n",err)
 		return nil,  err
