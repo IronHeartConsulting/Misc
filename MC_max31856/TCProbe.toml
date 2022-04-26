@@ -1,0 +1,30 @@
+title = "TOML format config for thermocouple reading to influxDB"
+
+test_name="testing"
+
+[database]
+server = "chester.local"
+DBName = "TC"
+username = "TCCollect"
+password = "magic4052"
+
+[[probe]]
+num=1
+name="room_temp"
+# combined with dev name root for /CS used with this channel
+cs="0"
+
+[[probe]]
+num=2
+name="probe_2"
+cs="1"
+
+[[probe]]
+num=3
+name="probe_3"
+
+[[probe]]
+num=4
+name="probe_4"
+
+
