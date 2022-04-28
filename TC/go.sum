@@ -1,0 +1,5 @@
+github.com/lukechannings/max31855 v1.1.0 h1:RXNM5TDY1hS1BYubNqQ3ekztLrz6Kd8akU0EirVUwPM=
+github.com/lukechannings/max31855 v1.1.0/go.mod h1:zcaezkfScXrXpu3UN6ZjP0GnaMoEsY39Wm+rDgS1AZ4=
+periph.io/x/periph v3.6.4+incompatible/go.mod h1:EWr+FCIU2dBWz5/wSWeiIUJTriYv9v2j2ENBmgYyy7Y=
+periph.io/x/periph v3.6.8+incompatible h1:lki0ie6wHtvlilXhIkabdCUQMpb5QN4Fx33yNQdqnaA=
+periph.io/x/periph v3.6.8+incompatible/go.mod h1:EWr+FCIU2dBWz5/wSWeiIUJTriYv9v2j2ENBmgYyy7Y=

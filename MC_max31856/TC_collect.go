@@ -5,15 +5,15 @@
 package main
 
 import (
+	// "context"
 	"errors"
-	"fmt"
 	"log"
 	"os"
 	"time"
 
-	client "github.com/influxdata/influxdb1-client/v2"
 	"github.com/spf13/viper"
-	max31856 "github.com/the-sibyl/goMAX31856"
+	"github.com/influxdata/influxdb-client-go/v2"
+	"github.com/davecgh/go-spew/spew"
 )
 
 var ourVersion string = "V0.2"
@@ -31,8 +31,12 @@ var TCbyNum map[int]TCProbe
 var TCs [4]TCProbe
 
 // var TCamp_1 TCamp
+
 var influxHostName string
-var HTTPClient client.Client
+
+var dbClient influxdb2.Client
+// var writeAPIx  dbClient.WriteAPI
+var writeAPIx  int
 var configTitle string
 var MyDB string
 var username string
@@ -62,18 +66,16 @@ var c Config
 
 // use influxDB to store TC readings
 func initDB() {
-	var err error
+	const token = "sHMevZdU_7FoHVAnnt9jtCSrLqlwgvBautxWa8S-63cUyqsNsAdegQ8VFgNwhmBXl5MXwAo-q8iIipn824w5kg=="
+	var xxx dbClient.WriteAPIBlocking
 
-	// Create a new HTTPClient
-	HTTPClient, err = client.NewHTTPClient(client.HTTPConfig{
-		Addr:     "http://" + c.Db.Host + ":8086",
-		Username: c.Db.User,
-		Password: c.Db.Pass,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-
+	// create new client with default option for server URL authenticate by token
+	dbClient = influxdb2.NewClient("https://us-central1-1.gcp.cloud2.influxdata.com", token)
+	writeAPIx := dbClient.WriteAPIBlocking("kevin.rowett@xconn-tech.com", "TC")
+	log.Println("--- start of writeAPI Dump ---")
+	spew.Dump(writeAPIx)
+	log.Println("--- end of writeAPI Dump ---")
+	log.Printf("var:%v\n",writeAPIx)
 }
 
 //  insert probe # and readings into DB
@@ -94,14 +96,6 @@ func insertReading(reading float32, probe int, probeName string) {
 	log.Printf("tags:%v\n", tags)
 	log.Printf("fields%v\n", fields)
 
-	bp, err := client.NewBatchPoints(client.BatchPointsConfig{
-		Database:  c.Db.DBName,
-		Precision: "s",
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	// Create a point and add to batch
 	//    tags = map[string]string{"location": rcvSensorM.Location,
 	//                  "DSType": rcvSensorM.DataStreamType,
@@ -112,16 +106,13 @@ func insertReading(reading float32, probe int, probeName string) {
 	//        "hum":    rcvSensorM.RH,
 	//    }
 
-	pt, err := client.NewPoint("TC_reading", tags, fields, time.Now())
-	if err != nil {
-		log.Fatal(err)
-	}
-	bp.AddPoint(pt)
+	pt := influxdb2.NewPoint("TC_reading", tags, fields, time.Now())
+	spew.Dump(pt)
 
 	// Write the batch
-	if err := HTTPClient.Write(bp); err != nil {
-		log.Fatal(err)
-	}
+	// if err := writeAPIx.WritePoint(context.Background(), pt); err != nil {
+	//	log.Fatal(err)
+	// }
 
 	// log.Println(". point written")
 
@@ -176,9 +167,6 @@ func loadConfig() (err error) {
 
 func main() {
 	var err error
-	var spiClockSpeed int64 = 100000
-	devPathCh0 := "/dev/spidev0.0"
-	timeoutPeriod := time.Second
 
 	err = loadConfig()
 	if err != nil {
@@ -190,19 +178,4 @@ func main() {
 	}
 	initDB()
 	log.Printf("*** MC_MAX31586 Reader %s starting ***", ourVersion)
-
-	ch0, err := max31856.Setup(devPathCh0, spiClockSpeed, 16, timeoutPeriod)
-
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	fmt.Println("??", max31856.CJLF_WR)
-
-	for {
-		temperature, _ := ch0.GetTempOnce()
-		fmt.Println("temp:", temperature)
-		insertReading(float32(temperature), 1, TCbyNum[1].name)
-		time.Sleep(500 * time.Millisecond)
-	}
 }
