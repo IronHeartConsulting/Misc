@@ -6,14 +6,17 @@ package main
 
 import (
 	// "context"
+	"context"
 	"errors"
+	"fmt"
 	"log"
 	"os"
 	"time"
 
-	"github.com/spf13/viper"
-	"github.com/influxdata/influxdb-client-go/v2"
 	"github.com/davecgh/go-spew/spew"
+	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
+	"github.com/spf13/viper"
+	max31856 "github.com/the-sibyl/goMAX31856"
 )
 
 var ourVersion string = "V0.2"
@@ -35,13 +38,15 @@ var TCs [4]TCProbe
 var influxHostName string
 
 var dbClient influxdb2.Client
+
 // var writeAPIx  dbClient.WriteAPI
-var writeAPIx  int
+var writeAPIx interface{}
 var configTitle string
 var MyDB string
 var username string
 var password string
 var testName string
+var ch0 max31856.MAX31856
 
 // config structures
 type DatabaseConfig struct {
@@ -67,15 +72,28 @@ var c Config
 // use influxDB to store TC readings
 func initDB() {
 	const token = "sHMevZdU_7FoHVAnnt9jtCSrLqlwgvBautxWa8S-63cUyqsNsAdegQ8VFgNwhmBXl5MXwAo-q8iIipn824w5kg=="
-	var xxx dbClient.WriteAPIBlocking
+	// var xxx interface{}
 
 	// create new client with default option for server URL authenticate by token
 	dbClient = influxdb2.NewClient("https://us-central1-1.gcp.cloud2.influxdata.com", token)
-	writeAPIx := dbClient.WriteAPIBlocking("kevin.rowett@xconn-tech.com", "TC")
-	log.Println("--- start of writeAPI Dump ---")
-	spew.Dump(writeAPIx)
-	log.Println("--- end of writeAPI Dump ---")
-	log.Printf("var:%v\n",writeAPIx)
+	writeAPIx = dbClient.WriteAPIBlocking("kevin.rowett@xconn-tech.com", "TC")
+
+}
+
+func initTC() {
+	var spiClockSpeed int64 = 100000
+	// var ch0 max31856.MAX31856
+	var err error
+	devPathCh0 := "/dev/spidev0.0"
+	timeoutPeriod := time.Second
+
+	ch0, err = max31856.Setup(devPathCh0, spiClockSpeed, 0, timeoutPeriod)
+
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	fmt.Println(max31856.CJLF_WR)
 }
 
 //  insert probe # and readings into DB
@@ -110,9 +128,9 @@ func insertReading(reading float32, probe int, probeName string) {
 	spew.Dump(pt)
 
 	// Write the batch
-	// if err := writeAPIx.WritePoint(context.Background(), pt); err != nil {
-	//	log.Fatal(err)
-	// }
+	if err := writeAPIx.WritePoint(context.Background(), pt); err != nil {
+		log.Fatal(err)
+	}
 
 	// log.Println(". point written")
 
@@ -167,6 +185,7 @@ func loadConfig() (err error) {
 
 func main() {
 	var err error
+	var tempC float32
 
 	err = loadConfig()
 	if err != nil {
@@ -177,5 +196,12 @@ func main() {
 		os.Exit(3)
 	}
 	initDB()
+	spew.Dump(writeAPIx)
 	log.Printf("*** MC_MAX31586 Reader %s starting ***", ourVersion)
+	initTC()
+	for {
+		tempC, _ = ch0.GetTempOnce()
+		insertReading(tempC, 0, TCbyNum[1].name)
+		time.Sleep(500 * time.Millisecond)
+	}
 }
