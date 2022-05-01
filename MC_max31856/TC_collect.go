@@ -13,13 +13,13 @@ import (
 	"os"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
+	"github.com/influxdata/influxdb-client-go/v2/api"
 	"github.com/spf13/viper"
 	max31856 "github.com/the-sibyl/goMAX31856"
 )
 
-var ourVersion string = "V0.2"
+var ourVersion string = "V0.3"
 
 //  TODO  convert to map, indexed by probe number from amp
 type TCProbe struct {
@@ -27,6 +27,7 @@ type TCProbe struct {
 	ampPortNum int
 	cs_name    string
 	//	lastReading float32
+	active bool
 }
 
 var TCbyNum map[int]TCProbe
@@ -35,31 +36,37 @@ var TCs [4]TCProbe
 
 // var TCamp_1 TCamp
 
-var influxHostName string
+// var influxHostName string
 
 var dbClient influxdb2.Client
+var writeAPIx api.WriteAPIBlocking
 
-// var writeAPIx  dbClient.WriteAPI
-var writeAPIx interface{}
+// var writeAPIx interface{}
 var configTitle string
 var MyDB string
-var username string
-var password string
+
+// var username string
+// var password string
 var testName string
 var ch0 max31856.MAX31856
 
 // config structures
 type DatabaseConfig struct {
-	Host   string `mapstructure:"server"`
-	User   string `mapstructure:"username"`
-	Pass   string `mapstructure:"password"`
-	DBName string `mapstructure:"DBName"`
+	Host      string `mapstructure:"server"`
+	User      string `mapstructure:"username"`
+	Pass      string `mapstructure:"password"`
+	DBName    string `mapstructure:"DBName"`
+	AuthTKN   string `mapstructure:"authToken"`
+	DelayTime int    `mapstructure:"delayTime"`
+	ServerURL string `mapstructure:"serverURL"`
+	ORGName   string `mapstructure:"org"`
 }
 
 type probes struct {
-	Name string `mapstructure:"name"`
-	Num  int    `mapstructure:"num"`
-	CS   string `mapstructure:"cs"`
+	Name   string `mapstructure:"name"`
+	Num    int    `mapstructure:"num"`
+	CS     string `mapstructure:"cs"`
+	Active bool   `mapstructure:"active"`
 }
 
 type Config struct {
@@ -71,12 +78,13 @@ var c Config
 
 // use influxDB to store TC readings
 func initDB() {
-	const token = "sHMevZdU_7FoHVAnnt9jtCSrLqlwgvBautxWa8S-63cUyqsNsAdegQ8VFgNwhmBXl5MXwAo-q8iIipn824w5kg=="
-	// var xxx interface{}
+	// const token = "sHMevZdU_7FoHVAnnt9jtCSrLqlwgvBautxWa8S-63cUyqsNsAdegQ8VFgNwhmBXl5MXwAo-q8iIipn824w5kg=="
 
 	// create new client with default option for server URL authenticate by token
-	dbClient = influxdb2.NewClient("https://us-central1-1.gcp.cloud2.influxdata.com", token)
-	writeAPIx = dbClient.WriteAPIBlocking("kevin.rowett@xconn-tech.com", "TC")
+	dbClient = influxdb2.NewClient(c.Db.ServerURL, c.Db.AuthTKN)
+	// writeAPIx = dbClient.WriteAPIBlocking("kevin.rowett@xconn-tech.com", "TC")
+	// writeAPI expects bucket nam - we use DBName for bucket name
+	writeAPIx = dbClient.WriteAPIBlocking(c.Db.ORGName, c.Db.DBName)
 
 }
 
@@ -86,13 +94,14 @@ func initTC() {
 	var err error
 	devPathCh0 := "/dev/spidev0.0"
 	timeoutPeriod := time.Second
-
+	fmt.Println("starting TC init")
 	ch0, err = max31856.Setup(devPathCh0, spiClockSpeed, 0, timeoutPeriod)
 
 	if err != nil {
 		fmt.Println(err)
 	}
 
+	fmt.Println("CJLF_WR")
 	fmt.Println(max31856.CJLF_WR)
 }
 
@@ -111,8 +120,8 @@ func insertReading(reading float32, probe int, probeName string) {
 		"probe": probe,
 	}
 
-	log.Printf("tags:%v\n", tags)
-	log.Printf("fields%v\n", fields)
+	// log.Printf("tags:%v\n", tags)
+	// log.Printf("fields%v\n", fields)
 
 	// Create a point and add to batch
 	//    tags = map[string]string{"location": rcvSensorM.Location,
@@ -125,7 +134,7 @@ func insertReading(reading float32, probe int, probeName string) {
 	//    }
 
 	pt := influxdb2.NewPoint("TC_reading", tags, fields, time.Now())
-	spew.Dump(pt)
+	// spew.Dump(pt)
 
 	// Write the batch
 	if err := writeAPIx.WritePoint(context.Background(), pt); err != nil {
@@ -139,7 +148,7 @@ func insertReading(reading float32, probe int, probeName string) {
 //  load probe names from a TOML table
 func loadProbeConfig() (err error) {
 
-	if viper.IsSet("probe") == false {
+	if !viper.IsSet("probe") {
 		log.Printf("no TCs configured")
 		return (errors.New("no probes configured"))
 	}
@@ -151,6 +160,7 @@ func loadProbeConfig() (err error) {
 		t.name = p.Name
 		t.ampPortNum = p.Num
 		t.cs_name = p.CS
+		t.active = p.Active
 		TCbyNum[p.Num] = t
 		// TCbyNum[p.Num].name = p.Name
 	}
@@ -178,6 +188,7 @@ func loadConfig() (err error) {
 	if err := viper.Unmarshal(&c); err != nil {
 		log.Printf("couldn't read config: %s", err)
 	}
+	log.Printf("config:%+v\n", c)
 
 	return (nil)
 
@@ -196,12 +207,13 @@ func main() {
 		os.Exit(3)
 	}
 	initDB()
-	spew.Dump(writeAPIx)
+	// spew.Dump(writeAPIx)
 	log.Printf("*** MC_MAX31586 Reader %s starting ***", ourVersion)
 	initTC()
 	for {
 		tempC, _ = ch0.GetTempOnce()
 		insertReading(tempC, 0, TCbyNum[1].name)
-		time.Sleep(500 * time.Millisecond)
+		log.Printf("TC reading:%f", tempC)
+		time.Sleep(time.Duration(c.Db.DelayTime) * time.Millisecond)
 	}
 }
