@@ -9,7 +9,7 @@ username = "TCCollect"
 password = "magic4052"
 #  time between updates in milliseconds = 500 is one update every 1/2 second
 delayTime = "500"
-# authorization to acces token, from influx cloud DB
+# authorization for access token, from influx cloud DB
 authToken = "sHMevZdU_7FoHVAnnt9jtCSrLqlwgvBautxWa8S-63cUyqsNsAdegQ8VFgNwhmBXl5MXwAo-q8iIipn824w5kg=="
 # influx cloud server URL
 serverURL = "https://us-central1-1.gcp.cloud2.influxdata.com"
