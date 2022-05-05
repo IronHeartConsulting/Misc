@@ -40,7 +40,8 @@ var writeAPIx api.WriteAPIBlocking
 var configTitle string
 var MyDB string
 var testName string
-var ch0 max31856.MAX31856
+
+// var ch0 max31856.MAX31856
 
 // config structures
 type DatabaseConfig struct {
