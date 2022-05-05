@@ -15,6 +15,7 @@ import (
 
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/influxdata/influxdb-client-go/v2/api"
+	"github.com/mvpninjas/go-bitflag"
 	"github.com/spf13/viper"
 	max31856 "github.com/the-sibyl/goMAX31856"
 )
@@ -28,6 +29,7 @@ type TCProbe struct {
 	cs_name    string
 	active     bool
 	channel    max31856.MAX31856
+	TCtype     string
 }
 
 var TCbyNum map[int]TCProbe
@@ -60,6 +62,7 @@ type probes struct {
 	Num    int    `mapstructure:"num"`
 	CS     string `mapstructure:"cs"`
 	Active bool   `mapstructure:"active"`
+	TCtype string `mapstructure:"type"`
 }
 
 type Config struct {
@@ -80,15 +83,21 @@ func initDB() {
 }
 
 func initTC() {
+	const (
+		CNVAVG_16 = 8 << 3
+		TC_K      = 3
+		TC_J      = 2
+	)
 	var spiClockSpeed int64 = 100000
 	// var ch0 max31856.MAX31856
 	var err error
 	// devPathCh0 := "/dev/spidev0.0"
+	var cr1 bitflag.Flag
 	devPathChRoot := "/dev/spidev0."
 	timeoutPeriod := time.Second
 	fmt.Println("starting TC init")
 	for i, _ := range TCs {
-		log.Printf("index:%d probe name:%s cs value:%s\n", i, TCs[i].name, TCs[i].cs_name)
+		log.Printf("index:%d probe name:%s cs value:%s TC Type:%s\n", i, TCs[i].name, TCs[i].cs_name, TCs[i].TCtype)
 		if !TCs[i].active {
 			log.Printf("not active, skipping\n")
 			continue
@@ -100,6 +109,20 @@ func initTC() {
 			TCs[i].active = false
 		} else {
 			log.Printf("spi channel init complete for:%s dev name:%s\n", TCs[i].name, devPathCh)
+			// set probe type
+			bitflag, _ := TCs[i].channel.GetFlags(max31856.CR1_RD)
+			log.Printf("config reg 1:%#[1]x\n", bitflag)
+			cr1.Set(CNVAVG_16)
+			switch TCs[i].TCtype {
+			case "k":
+				cr1.Set(TC_K)
+			case "j":
+				cr1.Set(TC_J)
+			default:
+			}
+			TCs[i].channel.SetFlags(max31856.CR1_WR, cr1)
+			bitflag, _ = TCs[i].channel.GetFlags(max31856.CR1_RD)
+			log.Printf("config reg 1:%#[1]x\n", bitflag)
 		}
 
 	}
@@ -108,7 +131,7 @@ func initTC() {
 	fmt.Println(max31856.CJLF_WR)
 }
 
-//  insert probe # and readings into DB
+//  insert probe # and readings into DB:q
 func insertReading(reading float32, probe int, probeName string) {
 
 	var tags map[string]string
@@ -163,6 +186,11 @@ func loadProbeConfig() (err error) {
 		TCs[i].name = p.Name
 		TCs[i].cs_name = p.CS
 		TCs[i].active = p.Active
+		if p.TCtype != "" {
+			TCs[i].TCtype = p.TCtype
+		} else {
+			TCs[i].TCtype = "k"
+		}
 	}
 	return (nil)
 }

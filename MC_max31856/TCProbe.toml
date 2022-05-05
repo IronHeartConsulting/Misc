@@ -21,21 +21,25 @@ name="room_temp"
 # combined with dev name root for /CS used with this channel
 cs="0"
 active=true
+type="j"
 
 [[probe]]
 num=2
 name="probe_2"
 cs="1"
 active=false
+type="k"
 
 [[probe]]
 num=3
 name="probe_3"
 cs="2"
 active=false
+type="k"
 
 [[probe]]
 num=4
 name="probe_4"
 cs="3"
 active=false
+
