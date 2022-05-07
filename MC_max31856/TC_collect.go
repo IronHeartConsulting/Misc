@@ -20,16 +20,17 @@ import (
 	max31856 "github.com/the-sibyl/goMAX31856"
 )
 
-var ourVersion string = "V0.3"
+var ourVersion string = "V0.4"
 
 //  TODO  convert to map, indexed by probe number from amp
 type TCProbe struct {
-	name       string
-	ampPortNum int
-	cs_name    string
-	active     bool
-	channel    max31856.MAX31856
-	TCtype     string
+	name        string
+	ampPortNum  int
+	cs_name     string
+	active      bool
+	channel     max31856.MAX31856
+	TCtype      string
+	lastReading float32 // used for display
 }
 
 var TCbyNum map[int]TCProbe
@@ -126,9 +127,6 @@ func initTC() {
 		}
 
 	}
-	// ch0, err = max31856.Setup(devPathCh0, spiClockSpeed, 0, timeoutPeriod)
-	fmt.Println("CJLF_WR")
-	fmt.Println(max31856.CJLF_WR)
 }
 
 //  insert probe # and readings into DB:q
@@ -237,12 +235,23 @@ func main() {
 	for {
 		for i, _ := range TCs {
 			if !TCs[i].active {
+				fmt.Printf(" --.- ")
 				continue
 			}
-			tempC, _ = TCs[i].channel.GetTempOnce()
-			insertReading(tempC, i, TCs[i].name)
-			log.Printf("TC reading:%f probe name:%s index:%d", tempC, TCs[i].name, i)
+			fault, _ := TCs[i].channel.CheckForFaults()
+			if !fault {
+				tempC, _ = TCs[i].channel.GetTempOnce()
+				TCs[i].lastReading = tempC
+				insertReading(tempC, i, TCs[i].name)
+				// log.Printf("TC reading:%f probe name:%s index:%d", tempC, TCs[i].name, i)
+				fmt.Printf(" %.1f ", tempC)
+			} else {
+				faultErr, _ := TCs[i].channel.GetFlags(max31856.SR_RD)
+				TCs[i].active = false
+				log.Printf("TC fault:%#[1]x channel disabled\n", faultErr)
+			}
 		}
+		fmt.Printf("\r")
 		time.Sleep(time.Duration(c.Db.DelayTime) * time.Millisecond)
 	}
 }
