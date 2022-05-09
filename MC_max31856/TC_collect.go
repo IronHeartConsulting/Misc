@@ -20,7 +20,7 @@ import (
 	max31856 "github.com/the-sibyl/goMAX31856"
 )
 
-var ourVersion string = "V0.4"
+var ourVersion string = "V0.5"
 
 //  TODO  convert to map, indexed by probe number from amp
 type TCProbe struct {
@@ -130,7 +130,7 @@ func initTC() {
 }
 
 //  insert probe # and readings into DB:q
-func insertReading(reading float32, probe int, probeName string) {
+func insertReading(reading float32, probe int, probeName string) error {
 
 	var tags map[string]string
 	var fields map[string]interface{}
@@ -161,11 +161,8 @@ func insertReading(reading float32, probe int, probeName string) {
 	// spew.Dump(pt)
 
 	// Write the batch
-	if err := writeAPIx.WritePoint(context.Background(), pt); err != nil {
-		log.Fatal(err)
-	}
-
-	// log.Println(". point written")
+	err := writeAPIx.WritePoint(context.Background(), pt)
+	return err
 
 }
 
@@ -242,9 +239,12 @@ func main() {
 			if !fault {
 				tempC, _ = TCs[i].channel.GetTempOnce()
 				TCs[i].lastReading = tempC
-				insertReading(tempC, i, TCs[i].name)
+				err = insertReading(tempC, i, TCs[i].name)
 				// log.Printf("TC reading:%f probe name:%s index:%d", tempC, TCs[i].name, i)
 				fmt.Printf(" %.1f ", tempC)
+				if err != nil {
+					log.Printf("DB insert failure:%s\n", err)
+				}
 			} else {
 				faultErr, _ := TCs[i].channel.GetFlags(max31856.SR_RD)
 				TCs[i].active = false
