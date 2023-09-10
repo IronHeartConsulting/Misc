@@ -19,6 +19,7 @@ const modeReg byte = 0x03
 const typeReg byte = 0x04
 const verReg byte = 0x0f
 const devCap byte = 0x0d
+const statusReg byte = 0x1a
 const bootStatus byte = 0x2D
 const devInfo byte = 0x2f
 
@@ -57,6 +58,53 @@ func decodeBS(buf []byte) {
 
 }
 
+// decodeDC - deocde device capabiliites
+func decodeDC(buf []byte) {
+
+	I2Cmlvl := (buf[1] & 0x80) >> 7
+	BC1p2Spted := (buf[1] & 0x60) >> 5
+	USBPDCap := (buf[1] & 0x04) >> 2
+	powerRole := buf[1] & 0x03
+
+	fmt.Println("Device Capabiliites")
+	if I2Cmlvl == 1 { // 3.3V pull up voltage
+		fmt.Printf("I2C master pullup voltage:3.3V\n")
+	} else {
+		fmt.Printf("I2C master pullup voltage:1.8V or 3.3V\n")
+	}
+	switch BC1p2Spted {
+	case 0:
+		fmt.Printf(" BC1.2 Not Supported\n")
+	case 1:
+		fmt.Printf("BC1.2 Only source supported\n")
+	case 2, 3:
+		fmt.Printf("(BC 1.2) Reserved\n")
+	}
+	if USBPDCap == 0 {
+		fmt.Println("USB PD supported")
+	} else {
+		fmt.Println("USB PD Not supported")
+	}
+	switch powerRole {
+	case 0:
+		fmt.Println("Power role (DRP) sink and src")
+	case 1:
+		fmt.Println("Power Role: src only")
+	case 2:
+		fmt.Println("power role: undefined")
+	case 3:
+		fmt.Println("power role: src only")
+	}
+	fmt.Println()
+}
+
+// decodeST - deocde status register
+func decodeST(buf []byte) {
+	bist := (buf[4] & 0x04) >> 2
+	legacy := buf[4] & 0x03
+	USBHost := (buf[3] & 0xc0) >> 6
+}
+
 func fetchReg(addr byte, count int) []byte {
 	var err error
 	var buf []byte
@@ -86,6 +134,7 @@ func main() {
 
 	var err error
 	var buf []byte
+	var limitReg bool = true
 
 	//	cmd line flags
 	debugFlag := flag.Bool("debug", false, "control debugging output")
@@ -112,17 +161,28 @@ func main() {
 
 	buf = fetchReg(modeReg, 4)
 	fmt.Printf("mode:%s\n", buf)
+	fmt.Println()
+	if string(buf[1:5]) == "APP " {
+		limitReg = false
+	}
+
 	buf = fetchReg(typeReg, 4)
 	fmt.Printf("type:%s\n", buf)
 	buf = fetchReg(verReg, 4)
-	fmt.Printf("ver string:%x\n", buf)
+	// fmt.Printf("ver string:%x\n", buf)
 	fmt.Printf("ver: %02X%02X.%02X.%02X\n", buf[4], buf[3], buf[2], buf[1])
 	buf = fetchReg(devCap, 4)
 	fmt.Printf("device capabilities:%x\n", buf)
+	decodeDC(buf)
 	buf = fetchReg(bootStatus, 5)
-	fmt.Printf("boot status:%x\n", buf[1:6])
+	// fmt.Printf("boot status:%x\n", buf[1:6])
 	decodeBS(buf)
 	buf = fetchReg(devInfo, 40)
 	fmt.Printf("device info:%s\n", buf)
-
+	if limitReg == true { // can't read any more registers, not in APP mode
+		fmt.Println("limited register access")
+		return
+	}
+	buf = fetchReg(statusReg, 5)
+	decodeST(buf)
 }
