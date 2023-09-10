@@ -17,6 +17,7 @@ import (
 
 const modeReg byte = 0x03
 const typeReg byte = 0x04
+const CUSTUSE byte = 0x06
 const verReg byte = 0x0f
 const devCap byte = 0x0d
 const statusReg byte = 0x1a
@@ -103,6 +104,60 @@ func decodeST(buf []byte) {
 	bist := (buf[4] & 0x04) >> 2
 	legacy := buf[4] & 0x03
 	USBHost := (buf[3] & 0xc0) >> 6
+	VbusStatus := (buf[3] & 0x30) >> 4
+	dataRole := (buf[1] & 0x40) >> 6
+	portRole := (buf[1] & 0x20) >> 5
+	plugOrient := (buf[1] & 0x10) >> 4
+
+	if bist == 1 {
+		fmt.Println("BIST in progress")
+	}
+	switch legacy {
+	case 0:
+		fmt.Println("not in Legacy (non PD) mode")
+	case 1:
+		fmt.Println("Legacy sink")
+	case 2:
+		fmt.Println("legacy source")
+	case 3:
+		fmt.Println("need dead battery cleared")
+	}
+	switch USBHost {
+	case 0:
+		fmt.Println("no host present")
+	case 1:
+		fmt.Println("Port partner is PD - no USB")
+	case 2:
+		fmt.Println("port partner - non PD")
+	case 3:
+		fmt.Printf("Host present and PD")
+	}
+	fmt.Printf("VBUS Status:")
+	switch VbusStatus {
+	case 0:
+		fmt.Printf("vSafe0V\n")
+	case 1:
+		fmt.Printf("vSafe5V\n")
+	case 2:
+		fmt.Printf("within limits\n")
+	case 3:
+		fmt.Printf("not within known range\n")
+	}
+	if dataRole == 1 {
+		fmt.Println("data role: DFP")
+	} else {
+		fmt.Println("data role:UFP")
+	}
+	if portRole == 1 {
+		fmt.Println("PD controller is SOURCE")
+	} else {
+		fmt.Println("PD controller is SINK")
+	}
+	if plugOrient == 1 {
+		fmt.Println("plug - upside down orientation")
+	} else {
+		fmt.Println("plug - normal orientation")
+	}
 }
 
 func fetchReg(addr byte, count int) []byte {
@@ -183,6 +238,8 @@ func main() {
 		fmt.Println("limited register access")
 		return
 	}
+	buf = fetchReg(CUSTUSE, 8)
+	fmt.Printf("Customer string:%s\n", buf)
 	buf = fetchReg(statusReg, 5)
 	decodeST(buf)
 }
