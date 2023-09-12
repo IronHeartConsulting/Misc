@@ -18,8 +18,11 @@ import (
 const modeReg byte = 0x03
 const typeReg byte = 0x04
 const CUSTUSE byte = 0x06
+const CMD1 byte = 0x08
+const DATA1 byte = 0x09
 const verReg byte = 0x0f
 const devCap byte = 0x0d
+const intEvent byte = 0x14
 const statusReg byte = 0x1a
 const powerPathStatus byte = 0x26
 const portCtl byte = 0x29
@@ -311,6 +314,30 @@ func decodePDS(buf []byte) {
 	}
 }
 
+// decodeIntEvt - 0x14 - interrupt event - we don't docde all of the events.
+func decodeIntEvt(buf []byte) {
+	I2CMNACKed := (buf[11] & 0x08) >> 3
+	CMDcmpl := (buf[4] & 0x40) >> 6
+	if I2CMNACKed == 1 {
+		fmt.Println("I2C Master cmd NACKed")
+	}
+	if CMDcmpl == 1 {
+		fmt.Println("4CC completed")
+	}
+}
+
+// write a 4CC command
+func write4CC(buf []byte) {
+	cmdByte := make([]byte, 1)
+	cmdByte[0] = CMD1
+	cmdplusbuf := append(cmdByte, buf...)
+	wrCount, err := i2c.WriteBytes(cmdplusbuf)
+	if err != nil {
+		fmt.Printf("I2C write failed:%s\n", err)
+	}
+	fmt.Printf("wrote:%d bytes %s\n", wrCount, buf)
+}
+
 func fetchReg(addr byte, count int) []byte {
 	var err error
 	var buf []byte
@@ -415,4 +442,24 @@ func main() {
 	// 0x69
 	buf = fetchReg(typeCState, 4)
 	fmt.Printf("Type C state:%x\n", buf)
+
+	// 0x14 - INT_EVENT
+	buf = fetchReg(intEvent, 11)
+	fmt.Printf("interrupt events:%x\n", buf)
+	decodeIntEvt(buf)
+
+	// read 4CC command register
+	buf = fetchReg(CMD1, 4)
+	fmt.Printf("4CC command reg:%s\n", buf)
+
+	write4CC([]byte("DBfg"))
+
+	// 0x14 - INT_EVENT
+	buf = fetchReg(intEvent, 11)
+	fmt.Printf("interrupt events:%x\n", buf)
+	decodeIntEvt(buf)
+
+	// read 4CC command register
+	buf = fetchReg(CMD1, 4)
+	fmt.Printf("4CC command reg:%s\n", buf)
 }
