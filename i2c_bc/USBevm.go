@@ -21,8 +21,15 @@ const CUSTUSE byte = 0x06
 const verReg byte = 0x0f
 const devCap byte = 0x0d
 const statusReg byte = 0x1a
+const powerPathStatus byte = 0x26
+const portCtl byte = 0x29
 const bootStatus byte = 0x2D
+const buildDesc byte = 0x2e
 const devInfo byte = 0x2f
+
+const powerConnStatus byte = 0x3f
+const pdStatus byte = 0x40
+const typeCState byte = 0x69
 
 var i2c *i2c_mod.I2C
 
@@ -160,6 +167,150 @@ func decodeST(buf []byte) {
 	}
 }
 
+// decode power path status
+func decodePPS(buf []byte) {
+	fmt.Printf("power path status:%x\n", buf)
+}
+
+// decode port control - mostly enables to the PD controller
+func decodePC(buf []byte) {
+
+	chargerDetectEnable := (buf[4] & 0xc0) >> 6
+	chargerAdEnable := (buf[4] & 0x1c) >> 2
+	res15kPres := buf[4] & 0x01
+	typeCI := buf[1] & 0x03
+
+	switch chargerDetectEnable {
+	case 0:
+		fmt.Println("don't detect Legacy chargers")
+	case 1:
+		fmt.Println("detect BC 1.2 chargers")
+	case 2:
+		fmt.Println("reserved")
+	case 3:
+		fmt.Println("Detect BC 1.2 and Legacy")
+	}
+	fmt.Printf("chargeAd:%d\n", chargerAdEnable)
+	fmt.Printf("ressitor 15K presence detect:%d\n", res15kPres)
+	fmt.Printf("Type C current:%d\n", typeCI)
+}
+
+// decode power connection status (0x3f)
+func decodePCS(buf []byte) {
+
+	fmt.Printf("power connection status:%x\n", buf)
+
+	chargerAd := buf[2] & 0x03
+	chargerDetect := (buf[1] & 0xf0) >> 4
+	typeCI := (buf[1] & 0x0c) >> 2
+	sourceSink := (buf[1] & 0x02) >> 1
+	poowerConn := buf[1] & 0x01
+
+	if poowerConn == 1 {
+		fmt.Println("power connection present")
+	} else {
+		fmt.Println("no power connection")
+		// exit - rest of bits are meaninigless
+		return
+	}
+
+	switch chargerAd {
+	case 0:
+		fmt.Println("charger advertises disabled or not run")
+	case 1:
+		fmt.Println("charger ad in process")
+	case 2:
+		fmt.Println("charger ad complete")
+	case 3:
+		fmt.Println("Reserved")
+	}
+	fmt.Printf("charger detection:")
+	switch chargerDetect {
+	case 0:
+		fmt.Println("diabled or not run")
+	case 1:
+		fmt.Println("in progress")
+	case 2:
+		fmt.Println("cmpl, non detected")
+	case 3:
+		fmt.Println("SDP")
+	case 4:
+		fmt.Println("BC 1.2 CDP")
+	case 5:
+		fmt.Println("BC 1.2 DCP")
+	case 6:
+		fmt.Println("Divider1 DCP")
+	case 7:
+		fmt.Println("Divider2 DCP")
+	case 8:
+		fmt.Println("Divider3 DCP")
+	case 9:
+		fmt.Println("1.2-V DCP")
+	default:
+		fmt.Println("Reserved")
+	}
+	fmt.Printf("Type C current:")
+	switch typeCI {
+	case 0:
+		fmt.Println("USB default")
+	case 1:
+		fmt.Println("1.5 A")
+	case 2:
+		fmt.Println("3.0 A")
+	case 3:
+		fmt.Println("PD contracted current")
+	}
+	if sourceSink == 1 { // we are sink
+		fmt.Println("power sink")
+	} else {
+		fmt.Println("power source")
+	}
+}
+
+// decodePDS - PD status 0x40
+func decodePDS(buf []byte) {
+
+	dataResetDetails := (buf[4] & 0x70) >> 4
+	errRcvyDetails := (buf[4] & 0x0f) | buf[3]&0xc0>>6
+	hardResetDetails := (buf[3] & 0x3f) >> 4
+	softResetDetails := (buf[2] & 0x1f) >> 4
+	currentPDrole := (buf[1] & 0x40) >> 6
+	portType := buf[1] & 0x30 >> 4
+	CCPullUp := (buf[1] & 0x0c) >> 2
+
+	fmt.Printf("data reset detail:%d\n", dataResetDetails)
+	fmt.Printf("error reecovery details:%d\n", errRcvyDetails)
+	fmt.Printf("hard reset details:%d\n", hardResetDetails)
+	fmt.Printf("soft reset details:%d\n", softResetDetails)
+	if currentPDrole == 0 {
+		fmt.Println("present PD role: sink")
+	} else {
+		fmt.Println("present PD Role: source")
+	}
+	fmt.Printf("present type-C power role:")
+	switch portType {
+	case 0:
+		fmt.Println("sink/source")
+	case 1:
+		fmt.Println("sink")
+	case 2:
+		fmt.Println("source")
+	case 3:
+		fmt.Println("source/sink")
+	}
+	fmt.Printf("CC Pull-UP value:")
+	switch CCPullUp {
+	case 0:
+		fmt.Println("no CC Pull up detected")
+	case 1:
+		fmt.Println("USB default current")
+	case 2:
+		fmt.Println("1.5 A (sinkTXNG)")
+	case 3:
+		fmt.Println("3.0A (sinkTXOK)")
+	}
+}
+
 func fetchReg(addr byte, count int) []byte {
 	var err error
 	var buf []byte
@@ -240,6 +391,28 @@ func main() {
 	}
 	buf = fetchReg(CUSTUSE, 8)
 	fmt.Printf("Customer string:%s\n", buf)
+
+	buf = fetchReg(buildDesc, 49)
+	fmt.Printf("build description:%s\n\n", buf)
+
 	buf = fetchReg(statusReg, 5)
 	decodeST(buf)
+
+	buf = fetchReg(powerPathStatus, 5)
+	decodePPS(buf)
+
+	buf = fetchReg(portCtl, 4)
+	decodePC(buf)
+
+	// 0x3F
+	buf = fetchReg(powerConnStatus, 2)
+	decodePCS(buf)
+
+	// 0x40
+	buf = fetchReg(pdStatus, 4)
+	decodePDS(buf)
+
+	// 0x69
+	buf = fetchReg(typeCState, 4)
+	fmt.Printf("Type C state:%x\n", buf)
 }
