@@ -23,6 +23,7 @@ const DATA1 byte = 0x09
 const verReg byte = 0x0f
 const devCap byte = 0x0d
 const intEvent byte = 0x14
+const INT_CLEAR byte = 0x18
 const statusReg byte = 0x1a
 const powerPathStatus byte = 0x26
 const portCtl byte = 0x29
@@ -59,6 +60,7 @@ func decodeBS(buf []byte) {
 		srcName = "I2C"
 	}
 
+	fmt.Println("----boot status-----0x2d")
 	fmt.Printf("  patch config source:%d\n", (buf[4]&0xe0)>>5) // bits 31:29
 	fmt.Printf("         patch config:%s\n", srcName)
 	fmt.Printf("thermal caused reboot:%d\n", (buf[3]&0x08)>>3) // bit 19
@@ -77,7 +79,7 @@ func decodeDC(buf []byte) {
 	USBPDCap := (buf[1] & 0x04) >> 2
 	powerRole := buf[1] & 0x03
 
-	fmt.Println("Device Capabiliites")
+	fmt.Println("----Device Capabiliites----0x0d")
 	if I2Cmlvl == 1 { // 3.3V pull up voltage
 		fmt.Printf("I2C master pullup voltage:3.3V\n")
 	} else {
@@ -106,7 +108,6 @@ func decodeDC(buf []byte) {
 	case 3:
 		fmt.Println("power role: src only")
 	}
-	fmt.Println()
 }
 
 // decodeST - deocde status register
@@ -119,6 +120,7 @@ func decodeST(buf []byte) {
 	portRole := (buf[1] & 0x20) >> 5
 	plugOrient := (buf[1] & 0x10) >> 4
 
+	fmt.Println("----status----0x1a")
 	if bist == 1 {
 		fmt.Println("BIST in progress")
 	}
@@ -172,7 +174,7 @@ func decodeST(buf []byte) {
 
 // decode power path status
 func decodePPS(buf []byte) {
-	fmt.Printf("power path status:%x\n", buf)
+	fmt.Printf("-----power path status-----0x26:%x\n", buf)
 }
 
 // decode port control - mostly enables to the PD controller
@@ -183,6 +185,7 @@ func decodePC(buf []byte) {
 	res15kPres := buf[4] & 0x01
 	typeCI := buf[1] & 0x03
 
+	fmt.Println("----Port Control----0x29")
 	switch chargerDetectEnable {
 	case 0:
 		fmt.Println("don't detect Legacy chargers")
@@ -201,7 +204,7 @@ func decodePC(buf []byte) {
 // decode power connection status (0x3f)
 func decodePCS(buf []byte) {
 
-	fmt.Printf("power connection status:%x\n", buf)
+	fmt.Printf("----power connection status------0x3f:%x\n", buf)
 
 	chargerAd := buf[2] & 0x03
 	chargerDetect := (buf[1] & 0xf0) >> 4
@@ -273,6 +276,7 @@ func decodePCS(buf []byte) {
 // decodePDS - PD status 0x40
 func decodePDS(buf []byte) {
 
+	fmt.Println("----PD status-----0x40")
 	dataResetDetails := (buf[4] & 0x70) >> 4
 	errRcvyDetails := (buf[4] & 0x0f) | buf[3]&0xc0>>6
 	hardResetDetails := (buf[3] & 0x3f) >> 4
@@ -316,6 +320,9 @@ func decodePDS(buf []byte) {
 
 // decodeIntEvt - 0x14 - interrupt event - we don't docde all of the events.
 func decodeIntEvt(buf []byte) {
+
+	fmt.Println("----INT Event list---0x14")
+	fmt.Printf("interrupt event bits:%x\n", buf)
 	I2CMNACKed := (buf[11] & 0x08) >> 3
 	CMDcmpl := (buf[4] & 0x40) >> 6
 	if I2CMNACKed == 1 {
@@ -326,10 +333,29 @@ func decodeIntEvt(buf []byte) {
 	}
 }
 
+// clearInts  -- clear Int bits
+// expects a 11 byte array.  set a bit to clear that interrupt
+func clearInts(buf []byte) {
+
+	fmt.Println("----clear Interrupts----0x18")
+	cmdByte := make([]byte, 1)
+	cmdByte[0] = INT_CLEAR
+	//  cmdByte[1] = 11
+	cmdplusbuf := append(cmdByte, buf...)
+	wrCount, err := i2c.WriteBytes(cmdplusbuf)
+	if err != nil {
+		fmt.Printf("err resetting interrupts:% s\n", err)
+	}
+	fmt.Printf("wrote:%d bytes - INT_CLEAR\n", wrCount)
+}
+
 // write a 4CC command
 func write4CC(buf []byte) {
-	cmdByte := make([]byte, 1)
-	cmdByte[0] = CMD1
+
+	fmt.Println("---write 4CC----0x08")
+	cmdByte := make([]byte, 2)
+	cmdByte[0] = CMD1 // register
+	cmdByte[1] = 0x04 // number of bytes in the data
 	cmdplusbuf := append(cmdByte, buf...)
 	wrCount, err := i2c.WriteBytes(cmdplusbuf)
 	if err != nil {
@@ -445,18 +471,24 @@ func main() {
 
 	// 0x14 - INT_EVENT
 	buf = fetchReg(intEvent, 11)
-	fmt.Printf("interrupt events:%x\n", buf)
+	decodeIntEvt(buf)
+
+	// clear interrupts
+	buf[11] &= 0x04 // clear I2CMaserNCKed
+	buf[4] &= 0x40  // CMDComplete
+	clearInts(buf)
+
+	// 0x14 - INT_EVENT
+	buf = fetchReg(intEvent, 11)
 	decodeIntEvt(buf)
 
 	// read 4CC command register
 	buf = fetchReg(CMD1, 4)
 	fmt.Printf("4CC command reg:%s\n", buf)
-
 	write4CC([]byte("DBfg"))
 
 	// 0x14 - INT_EVENT
 	buf = fetchReg(intEvent, 11)
-	fmt.Printf("interrupt events:%x\n", buf)
 	decodeIntEvt(buf)
 
 	// read 4CC command register
