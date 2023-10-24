@@ -365,43 +365,18 @@ func write4CC(buf []byte) {
 	fmt.Printf("wrote:%d bytes %s\n", wrCount, buf)
 }
 
-// write a 4CC command with data
-func write4CCwData(buf []byte, data []byte) {
-
-	var err error
-	var wrCount int
-
-	fmt.Println("---write 4CC w/DATA----0x08")
-
-	dataReg := make([]byte, (1 + len(data)))
-	dataReg[0] = DATA1
-	dataCmd := append(dataReg, data...)
-	_, err = i2c.WriteBytes(dataCmd)
-	if err != nil {
-		fmt.Printf("data reg I2C write failed:%s\n", err)
-	}
-	fmt.Printf("data buf:%#v\n", data)
-
-	cmdByte := make([]byte, 2)
-	cmdByte[0] = CMD1 // register
-	cmdByte[1] = 0x04 // number of bytes in the data
-	cmdplusbuf := append(cmdByte, buf...)
-	wrCount, err = i2c.WriteBytes(cmdplusbuf)
-	if err != nil {
-		fmt.Printf("I2C write failed:%s\n", err)
-	}
-	fmt.Printf("wrote:%d bytes %s\n", wrCount, buf)
-}
-
 // fill data buffer for 4CC command
 func write4CCDataBuf(data []byte) {
 	var err error
 
 	fmt.Println("---write 4CC DATA buf----0x09")
 
-	dataReg := make([]byte, (1 + len(data)))
+	dataReg := make([]byte, 2)
 	dataReg[0] = DATA1
+	dataReg[1] = byte(len(data))
+
 	dataCmd := append(dataReg, data...)
+	fmt.Printf("data buf:%d dataReg:%d dataCMD:%d\n", len(data), len(dataReg), len(dataCmd))
 	_, err = i2c.WriteBytes(dataCmd)
 	if err != nil {
 		fmt.Printf("data reg I2C write failed:%s\n", err)
@@ -446,7 +421,7 @@ func main() {
 	debugFlag := flag.Bool("debug", false, "control debugging output")
 	flag.Parse()
 
-	lg.Info("I2C command to charger EVM V0.1")
+	lg.Info("I2C command to charger EVM V0.2")
 
 	defer logger.FinalizeLogger()
 	// Create new connection to i2c-bus on 1 line with address 0x21.
@@ -542,8 +517,6 @@ func main() {
 	buf = fetchReg(CMD1, 4)
 	fmt.Printf("4CC command reg:%s\n", buf)
 
-	//send bad command, jsut to make sure it's working
-	fmt.Println("*** send bad 4CC cmd *** ")
 	// clear interrupts
 	intBuf[11] &= 0x04 // clear I2CMaserNCKed
 	intBuf[4] &= 0x40  // CMDComplete
@@ -552,19 +525,6 @@ func main() {
 	// 0x14 - INT_EVENT
 	buf = fetchReg(intEvent, 11)
 	decodeIntEvt(buf)
-
-	// send bad 4CC command
-	buf = fetchReg(CMD1, 4)
-	fmt.Printf("4CC command reg:%s\n", buf)
-	write4CC([]byte("DBXX"))
-
-	// 0x14 - INT_EVENT
-	buf = fetchReg(intEvent, 11)
-	decodeIntEvt(buf)
-
-	// read 4CC command register
-	buf = fetchReg(CMD1, 4)
-	fmt.Printf("4CC command reg:%s\n", buf)
 
 	// read from BC  read the VSYSMIN register (0x00) len = 1, BC I2C addr = 0x6b
 	// part info (0x48)
@@ -574,7 +534,7 @@ func main() {
 	intBuf[4] &= 0x40  // CMDComplete
 	clearInts(intBuf)
 
-	vminReg := []byte{0x6b, 0x48, 0x01}
+	vminReg := []byte{0x6b, 0x00, 0x01}
 	write4CCDataBuf(vminReg)
 	// read back what came back in I2C read
 	fetchRegv(DATA1, 4)
@@ -591,4 +551,47 @@ func main() {
 
 	// read back what came back in I2C read
 	fetchRegv(DATA1, 4)
+
+	// read reg 48
+	vminReg = []byte{0x6b, 0x48, 0x01}
+	write4CCDataBuf(vminReg)
+
+	write4CC([]byte("I2Cr"))
+
+	// 0x14 - INT_EVENT
+	buf = fetchReg(intEvent, 11)
+	decodeIntEvt(buf)
+
+	// read 4CC command register
+	buf = fetchReg(CMD1, 4)
+	fmt.Printf("4CC command reg:%s\n", buf)
+
+	// read back what came back in I2C read
+	fetchRegv(DATA1, 4)
+
+	// I2C write to BC - set vsysmin to 12V
+	// 	vminReg = []byte{0x6b, 1, 0, 0x00, 38}
+	vminReg = []byte{0x6b, 2, 0, 0x00, 38}
+	write4CCDataBuf(vminReg)
+
+	write4CC([]byte("I2Cw"))
+	// 0x14 - INT_EVENT
+	buf = fetchReg(intEvent, 11)
+	decodeIntEvt(buf)
+
+	// read 4CC command register
+	buf = fetchReg(CMD1, 4)
+	fmt.Printf("4CC command reg:%s\n", buf)
+
+	// read back what came back in I2C read
+	fetchRegv(DATA1, 4)
+
+	// read vsysmin reg back
+	vminReg = []byte{0x6b, 0x00, 0x01}
+	write4CCDataBuf(vminReg)
+
+	write4CC([]byte("I2Cr"))
+	// read back what came back in I2C read
+	fetchRegv(DATA1, 4)
+
 }
