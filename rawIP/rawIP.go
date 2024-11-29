@@ -19,6 +19,17 @@ var blksize = flag.Int("bsize", 1024, "size of each block")
 var debug = flag.Bool("debug", false, "debug true|false")
 
 var protocol = "61"
+var clconn net.Conn
+
+// cmd list - reset; print stats; exit
+
+type cmd int
+
+const (
+	CmdReset cmd = iota + 1
+	CmdPrints
+	CmdExit
+)
 
 // rawP -mode server | client -ServerIP <IP addr> -cnt <cnt of blocks to send? -bsize <size of each block>
 
@@ -58,6 +69,21 @@ func serverMode() {
 			fmt.Printf("Read len:%d\n% X\n", n, buf[0:20])
 		}
 		blknum := binary.LittleEndian.Uint16(buf[0:2])
+		if blknum == 0xffff {
+			fmt.Print("cmd rcved  ")
+			cmd := buf[2]
+			switch cmd {
+			case 1:
+				fmt.Print("Reset")
+				priorBlkNum = -1
+			case 2:
+				fmt.Print("Print Stats")
+			case 3:
+				fmt.Print("Exit")
+				os.Exit(0)
+			}
+			continue
+		}
 		if priorBlkNum+1 != int(blknum) {
 			fmt.Printf("out of seq. Expected:%d\n", priorBlkNum+1)
 		}
@@ -78,14 +104,16 @@ func serverMode() {
 }
 
 func clientMode() {
+	var err error
+
 	fmt.Printf("client mode. IP:%s\n", *serIP)
-	conn, err := net.Dial("ip4:"+protocol, *serIP)
+	clconn, err = net.Dial("ip4:"+protocol, *serIP)
 	if err != nil {
 		panic(err)
 	}
+	sendCMD(CmdReset)
 	buf := make([]byte, *blksize)
 	rand.Seed(time.Now().UnixNano())
-	// pattern := []byte{0xde, 0xad, 0xbe, 0xef}
 
 	for blockNum := 0; blockNum < *blkCnt; blockNum++ {
 		blknum := make([]byte, 2)
@@ -96,10 +124,28 @@ func clientMode() {
 		crcByte := make([]byte, 4)
 		binary.BigEndian.PutUint32(crcByte, ieeeChecksum)
 		copy(buf[2:6], crcByte)
-		conn.Write(buf)
+		clconn.Write(buf)
 		fmt.Printf("block interation:%d block number:%v block number type:%T\n", blockNum, blknum, blknum)
 		fmt.Printf("crc32:% X type:%T\n", ieeeChecksum, ieeeChecksum)
 		fmt.Printf("Len buf:%d\n", len(buf))
 	}
+	sendCMD(CmdPrints)
+	sendCMD(CmdExit)
 
+}
+
+func sendCMD(Cmd2send cmd) {
+	fmt.Printf("sending cmd:%d\n", Cmd2send)
+	CMdBuf := make([]byte, 3)
+	CMdBuf[0] = 0xff
+	CMdBuf[1] = 0xff
+	switch Cmd2send {
+	case CmdReset:
+		CMdBuf[2] = byte(CmdReset)
+	case CmdPrints:
+		CMdBuf[2] = byte(CmdPrints)
+	case CmdExit:
+		CMdBuf[2] = byte(CmdExit)
+	}
+	clconn.Write(CMdBuf)
 }
