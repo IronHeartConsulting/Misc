@@ -59,6 +59,7 @@ func serverMode() {
 	blocksRecved := 0
 	OOS := 0
 	crcErr := 0
+	seqOrder := make(map[int]int)
 	conn, _ := net.ListenIP("ip4:"+protocol, nil)
 	buf := make([]byte, 1024)
 	for {
@@ -80,11 +81,17 @@ func serverMode() {
 				blocksRecved = 0
 				OOS = 0
 				crcErr = 0
+				clear(seqOrder)
 			case 2:
 				fmt.Println()
 				fmt.Printf("block count:        %d\n", blocksRecved)
 				fmt.Printf("out of order blocks:%d\n", OOS)
 				fmt.Printf("blocks with CRC err:%d\n", crcErr)
+				fmt.Print("blk num recved order:")
+				for blockIndex := 0; blockIndex < blocksRecved; blockIndex++ {
+					fmt.Printf("%d->%d ", blockIndex, seqOrder[blockIndex])
+				}
+				fmt.Println()
 			case 3:
 				fmt.Println("Exit")
 				os.Exit(0)
@@ -95,9 +102,9 @@ func serverMode() {
 		// only count blocks that are data
 		fmt.Print(".")
 		blocksRecved = blocksRecved + 1
-
+		seqOrder[blocksRecved-1] = int(blknum)
 		if priorBlkNum+1 != int(blknum) {
-			fmt.Printf("out of seq. Expected:%d\n", priorBlkNum+1)
+			fmt.Printf("out of seq. Expected:%d got:%d\n", priorBlkNum+1, int(blknum))
 			OOS = OOS + 1
 		}
 		if *debug {
@@ -143,8 +150,9 @@ func clientMode() {
 		fmt.Printf("crc32:% X type:%T\n", ieeeChecksum, ieeeChecksum)
 		fmt.Printf("Len buf:%d\n", len(buf))
 	}
+	time.Sleep(1 * time.Second)
 	sendCMD(CmdPrints)
-	sendCMD(CmdExit)
+	// sendCMD(CmdExit)
 
 }
 
