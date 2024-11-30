@@ -43,7 +43,7 @@ func main() {
 
 	flag.Parse()
 
-	fmt.Println("raw IP xfer. Version", "V0.6")
+	fmt.Println("raw IP xfer. Version", "V0.7")
 	if *mode == "server" {
 		serverMode()
 	} else { //assume client mode
@@ -56,6 +56,9 @@ func serverMode() {
 	// netaddr, _ := net.ResolveIPAddr("ip4", "127.0.0.1")
 	// conn, _ := net.ListenIP("ip4:"+protocol, netaddr)
 	priorBlkNum := -1
+	blocksRecved := 0
+	OOS := 0
+	crcErr := 0
 	conn, _ := net.ListenIP("ip4:"+protocol, nil)
 	buf := make([]byte, 1024)
 	for {
@@ -64,28 +67,38 @@ func serverMode() {
 			fmt.Println("server read error", err)
 			os.Exit(4)
 		}
-		fmt.Print(".")
 		if *debug {
 			fmt.Printf("Read len:%d\n% X\n", n, buf[0:20])
 		}
 		blknum := binary.LittleEndian.Uint16(buf[0:2])
 		if blknum == 0xffff {
-			fmt.Print("cmd rcved  ")
 			cmd := buf[2]
 			switch cmd {
 			case 1:
 				fmt.Print("Reset")
 				priorBlkNum = -1
+				blocksRecved = 0
+				OOS = 0
+				crcErr = 0
 			case 2:
-				fmt.Print("Print Stats")
+				fmt.Println()
+				fmt.Printf("block count:        %d\n", blocksRecved)
+				fmt.Printf("out of order blocks:%d\n", OOS)
+				fmt.Printf("blocks with CRC err:%d\n", crcErr)
 			case 3:
-				fmt.Print("Exit")
+				fmt.Println("Exit")
 				os.Exit(0)
 			}
 			continue
 		}
+
+		// only count blocks that are data
+		fmt.Print(".")
+		blocksRecved = blocksRecved + 1
+
 		if priorBlkNum+1 != int(blknum) {
 			fmt.Printf("out of seq. Expected:%d\n", priorBlkNum+1)
+			OOS = OOS + 1
 		}
 		if *debug {
 			fmt.Printf("seq num:%d\n", blknum)
@@ -99,6 +112,7 @@ func serverMode() {
 		}
 		if bufCkSum != ieeeChecksum {
 			fmt.Printf("client checksum differs from server computed\n")
+			crcErr = crcErr + 1
 		}
 	}
 }
